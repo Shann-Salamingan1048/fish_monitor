@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% set page = "access" %}
+{% set title = "Access" %}
+{% block content %}
+<section id="role-panel" class="card access-card">
+<h2>Admin access</h2>
+<p id="admin-session-text">Admin sessions: — / 2</p>
+<form id="admin-login-panel" class="mode-grid">
+<label for="admin-pin">Admin PIN</label><input id="admin-pin" type="password" autocomplete="current-password" required>
+<button id="login-admin" class="mode-btn" type="submit">Sign in</button>
+</form>
+<button id="logout-admin" class="mode-btn muted" type="button" hidden>Sign out</button>
+<p id="mode-message" role="status" aria-live="polite"></p>
+<p class="control-note">Change the PIN in the desktop app: Controls & settings → Admin PIN.</p>
+</section>
+{% endblock %}

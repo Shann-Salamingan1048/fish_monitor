@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% set page = "camera" %}
+{% set title = "Camera" %}
+{% block content %}
+<section class="card camera-card">
+            <div class="card-title wrap-title">
+                <div class="icon-box purple-icon"><i class="fas fa-camera"></i></div>
+                <div>
+                    <h2>Live Camera</h2>
+                    
+                </div>
+                <span class="live-label">● LIVE</span>
+            </div>
+
+            <div class="camera-frame">
+                <img id="camera-stream" alt="Raspberry Pi camera stream">
+            </div>
+
+            <div class="camera-buttons">
+                <button onclick="reloadCamera()" title="Reload camera">Reload camera</button>
+                <label for="camera-feed-cycles">Feeding cycles</label>
+                <input id="camera-feed-cycles" type="number" min="1" max="4294967295" step="1" value="1" disabled aria-describedby="camera-feeder-message">
+                <button onclick="sendCommand('feed')" class="feed-small" disabled><i class="fas fa-heart"></i> Feed now</button>
+            </div>
+            <p id="camera-feeder-status" class="camera-feeder-note" role="status"></p>
+            <p id="camera-feeder-message" class="camera-feeder-note" role="status"></p>
+        </section>
+
+        <section class="card controls-card">
+            <div>
+                <h2>Camera Controls</h2>
+                <p id="servo-position-text"></p>
+            </div>
+
+            <div class="control-grid">
+                <span aria-hidden="true"></span>
+                <button onclick="sendCommand('up')">Up</button>
+                <span aria-hidden="true"></span>
+
+                <button onclick="sendCommand('left')">Left</button>
+                <button onclick="sendCommand('center')">Center</button>
+                <button onclick="sendCommand('right')">Right</button>
+
+                <span aria-hidden="true"></span>
+                <button onclick="sendCommand('down')">Down</button>
+                <span aria-hidden="true"></span>
+            </div>
+        </section>
+
+{% endblock %}

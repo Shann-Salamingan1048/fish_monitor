@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% set page = "graphs" %}
+{% set title = "Graphs" %}
+{% block content %}
+<div class="graph-page-grid">
+            
+
+            <section class="card graph-card">
+                <div class="card-title compact-title">
+                    <div class="icon-box orange-icon">
+                        <i class="fas fa-thermometer-half"></i>
+                    </div>
+                    <div>
+                        <h2>Temperature</h2>
+                    </div>
+                </div>
+                <canvas role="img" aria-label="Recent sensor readings" id="tempChart"></canvas>
+            </section>
+
+            <section class="card graph-card">
+                <div class="card-title compact-title">
+                    <div class="icon-box green-icon">
+                        <i class="fas fa-vial"></i>
+                    </div>
+                    <div>
+                        <h2>pH Level</h2>
+                    </div>
+                </div>
+                <canvas role="img" aria-label="Recent sensor readings" id="phChart"></canvas>
+            </section>
+
+            <section class="card graph-card">
+                <div class="card-title compact-title">
+                    <div class="icon-box blue-icon">
+                        <i class="fas fa-tint"></i>
+                    </div>
+                    <div>
+                        <h2>Water Level</h2>
+                    </div>
+                </div>
+                <canvas role="img" aria-label="Recent sensor readings" id="floatChart"></canvas>
+            </section>
+
+            <section class="card graph-card">
+                <div class="card-title compact-title">
+                    <div class="icon-box mint-icon">
+                        <i class="fas fa-eye"></i>
+                    </div>
+                    <div>
+                        <h2>Turbidity</h2>
+                    </div>
+                </div>
+                <canvas role="img" aria-label="Recent sensor readings" id="turbidityChart"></canvas>
+            </section>
+        </div>
+{% endblock %}

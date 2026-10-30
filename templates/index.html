@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% set page = "index" %}
+{% set title = "Overview" %}
+{% block content %}
+<section class="card status-card">
+                <div class="card-title">
+                    <div class="icon-box blue-icon">
+                        <i class="fas fa-bolt"></i>
+                    </div>
+                    <div>
+                        <h2>System Status</h2>
+                        
+                    </div>
+                </div>
+
+                <div class="badge-grid">
+                    <div class="badge orange">
+                        <div class="badge-top">
+                            <span><i class="fas fa-thermometer-half"></i> Temperature</span>
+                            <b id="temp-val">--°C</b>
+                        </div>
+                        <div class="progress-bar">
+                            <div id="temp-bar" class="fill" style="width:0%"></div>
+                        </div>
+                    </div>
+
+                    <div class="badge purple">
+                        <div class="badge-top">
+                            <span><i class="fas fa-clock"></i> Current Time</span>
+                            <b id="time-val">--:--</b>
+                        </div>
+                    </div>
+
+                    <div class="badge green-light">
+                        <div class="badge-top">
+                            <span><i class="fas fa-vial"></i> pH Level</span>
+                            <b id="ph-val" class="tag-green">--</b>
+                        </div>
+                    </div>
+
+                    <div class="badge blue-light">
+                        <div class="badge-top">
+                            <span><i class="fas fa-sync-alt"></i> Feed Mode</span>
+                            <b id="feed-mode-val" class="tag-purple">Manual</b>
+                        </div>
+                    </div>
+
+                    <div class="badge blue">
+                        <div class="badge-top">
+                            <span><i class="fas fa-tint"></i> Water Level</span>
+                            <b id="water-val" class="tag-blue">--</b>
+                        </div>
+                    </div>
+
+                    <div class="badge green-mint">
+                        <div class="badge-top">
+                            <span><i class="fas fa-eye"></i> Water Clarity</span>
+                            <b id="clarity-val" class="tag-mint">--</b>
+                        </div>
+                    </div>
+
+                    <div class="badge blue">
+                        <div class="badge-top">
+                            <span><i class="fas fa-water"></i> Water Pumps</span>
+                            <b id="pump-mode-val" class="tag-blue">Auto Ready</b>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="fan-status-summary"><strong>Cooling fan</strong><p data-fan-status role="status">—</p></div>
+                <p id="quality-confirmation-status" class="confirmation-note" role="status" hidden></p>
+                <div class="smart-alert-panel">
+                    <div class="smart-alert-head">
+                        <div>
+                            <h3><i class="fas fa-bell"></i> Notifications</h3>
+                        </div>
+                        <span id="alert-updated" class="alert-updated">Waiting for data</span>
+                    </div>
+
+                    <div id="alert-summary" class="alert-summary safe">
+                        <i class="fas fa-circle-info"></i>
+                        <span>Checking sensor limits and trends...</span>
+                    </div>
+
+                    <div id="alert-list" class="alert-list">
+                        <div class="empty-alert">
+                            <i class="fas fa-fish"></i>
+                            <span>No active warnings yet.</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+{% endblock %}

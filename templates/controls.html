@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% set page = "controls" %}
+{% set title = "Controls" %}
+{% block content %}
+<section id="admin-control-panel" class="card" style="display:none"><h2>Water pumps</h2><p id="water-control-status" role="status"></p><div id="manual-override-panel" class="manual-override-panel" >
+                <div class="manual-control-grid">
+                    <button type="button" class="pump-btn extract" onclick="sendWaterAction('extract_start')"><i class="fas fa-arrow-up-from-water-pump"></i> Drain water</button>
+                    <button type="button" class="pump-btn muted" onclick="sendWaterAction('extract_stop')">Stop draining</button>
+                    <button type="button" class="pump-btn insert" onclick="sendWaterAction('insert_start')"><i class="fas fa-faucet-drip"></i> Refill water</button>
+                    <button type="button" class="pump-btn muted" onclick="sendWaterAction('insert_stop')">Stop refilling</button>
+                    <button type="button" class="pump-btn insert" onclick="sendWaterAction('both_start')"><i class="fas fa-water"></i> Both pumps — drain + refill</button>
+                    <button type="button" class="pump-btn danger" onclick="sendWaterAction('stop_all')"><i class="fas fa-stop"></i> Stop All Pumps</button>
+                    <button type="button" class="pump-btn auto" onclick="sendWaterAction('auto_resume')"><i class="fas fa-rotate"></i> Resume automatic control</button>
+
+                </div>
+
+                <p class="control-note">Manual pumps stay on until stopped. Resume Auto to restore automation.</p>
+            </div></section>
+<section id="fan-control-panel" class="card fan-controls" hidden>
+            <h3>Cooling fan</h3>
+            <p data-fan-status role="status">Waiting for output Nano…</p>
+            <div class="feeder-actions" aria-label="Cooling fan mode">
+                <button type="button" class="mode-btn" data-fan-mode="AUTO" onclick="setFanMode('AUTO')" disabled>Auto</button>
+                <button type="button" class="mode-btn" data-fan-mode="ON" onclick="setFanMode('ON')" disabled>Fan on</button>
+                <button type="button" class="mode-btn muted" data-fan-mode="OFF" onclick="setFanMode('OFF')" disabled>Fan off</button>
+            </div>
+            
+            <p id="fan-message" role="status"></p>
+        </section>
+{% endblock %}

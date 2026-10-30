@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% set page = "feeding" %}
+{% set title = "Feeding" %}
+{% block content %}
+<nav class="section-links" aria-label="Feeding sections"><a href="#schedule-section">Schedule</a><a href="#custom-feeder">Feed now</a></nav>
+<section id="schedule-section" class="card feeding-schedule-card">
+                <div class="card-title schedule-title">
+                    <div class="icon-box green-icon">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <div>
+                        <h2>Feeding Schedule</h2>
+                        
+                    </div>
+                    <div class="schedule-summary">
+                        <strong id="next-feeding-text">No automatic feeding scheduled</strong>
+                        <span id="feeding-timezone-text">Timezone: loading…</span>
+                    </div>
+                </div>
+
+                <form id="feeding-schedule-form" class="schedule-form" hidden>
+                    <label>
+                        Day
+                        <select id="feeding-day" required>
+                            <option value="7">Every day (Monday–Sunday)</option>
+                            <option value="0">Monday</option>
+                            <option value="1">Tuesday</option>
+                            <option value="2">Wednesday</option>
+                            <option value="3">Thursday</option>
+                            <option value="4">Friday</option>
+                            <option value="5">Saturday</option>
+                            <option value="6">Sunday</option>
+                        </select>
+                    </label>
+                    <label>
+                        Time
+                        <input id="feeding-time" type="time" step="60" required>
+                    </label>
+                    <label>Cycles per feeding
+                        <input id="feeding-cycles" type="number" min="1" step="1" value="3" required>
+                    </label>
+                    <button id="save-feeding-schedule" class="mode-btn" type="submit">
+                        <i class="fas fa-plus"></i> Add Schedule
+                    </button>
+                    <button id="cancel-feeding-edit" class="mode-btn muted" type="button" hidden>Cancel</button>
+                </form>
+
+                <p id="feeding-schedule-message" class="schedule-message" aria-live="polite"></p>
+
+                <div id="feeding-schedule-list" class="feeding-schedule-list">
+                    <div class="schedule-empty">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>Loading feeding schedules…</span>
+                    </div>
+                </div>
+            </section>
+<section id="custom-feeder" class="card custom-feeder" hidden>
+            <h3>Feed Your Fish Now</h3>
+            <div class="feeder-actions">
+                <label for="manual-feed-cycles">Cycles (whole number)</label>
+                <input id="manual-feed-cycles" type="number" min="1" step="1" value="1">
+                <button type="button" class="mode-btn" id="feed-custom" onclick="feederAction('feed')">Feed now</button>
+            </div>
+            <p id="feeder-status" role="status">Checking feeder connection…</p>
+            <p id="feeder-message" role="status"></p>
+        </section>
+{% endblock %}

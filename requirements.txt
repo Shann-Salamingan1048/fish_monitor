@@ -1,0 +1,69 @@
+# AquaPi - complete installation checklist (Python 3.10 or newer)
+# Run the appropriate commands below from the extracted fish_monitor folder.
+# Lines beginning with # are instructions; pip installs only the entries below.
+# OS packages, Arduino libraries and cloudflared cannot be installed by pip.
+#
+# 1. SYSTEM PACKAGES - choose your host:
+# Raspberry Pi OS with the current libcamera camera stack:
+#   sudo apt update
+#   sudo apt install python3 python3-venv python3-pip python3-tk python3-opencv python3-picamera2 tzdata curl ca-certificates
+# Zorin OS / Ubuntu laptop (dashboard and control testing):
+#   sudo apt update
+#   sudo apt install python3 python3-venv python3-pip python3-tk python3-opencv tzdata curl ca-certificates
+# Picamera2/libcamera require Raspberry Pi OS camera support. The laptop webcam
+# is not supported by this project's current camera implementation.
+# cv2 comes from python3-opencv, including its NumPy dependencies. Install it
+# even for dashboard-only use because flask_server.py imports cv2 at startup.
+# Do not mix pip OpenCV/NumPy wheels into the Pi OS camera environment.
+#
+# 2. PYTHON ENVIRONMENT - both hosts:
+#   python3 -m venv --system-site-packages .venv
+#   source .venv/bin/activate
+#   python -m pip install -r requirements.txt
+# Recreate the environment on each host; do not copy a laptop .venv to the Pi.
+# If an existing .venv cannot import cv2/picamera2, create a fresh environment
+# with --system-site-packages rather than overwriting your working environment.
+#
+# 3. USB SERIAL PERMISSIONS - only if your user lacks device access:
+#   sudo usermod -aG dialout "$USER"
+# Log out and back in after changing groups. Close Arduino Serial Monitor before
+# running AquaPi so it does not compete for the same Nano serial port.
+#
+# 4. ARDUINO IDE - install separately on the computer used to flash the Nanos:
+# Board Manager: Arduino AVR Boards; select Arduino Nano, matching processor
+# (ATmega328P or Old Bootloader as appropriate), and the correct serial port.
+# Library Manager, INPUT Nano: OneWire; DallasTemperature.
+# Library Manager, OUTPUT Nano: Adafruit PWM Servo Driver Library; accept its
+# dependencies, including Adafruit BusIO. Wire and AVR/C headers come with the core.
+# INPUT: arduino/Nano_INPUT_Millis/Nano_INPUT_Millis.ino
+# OUTPUT: arduino/NANO_OUTPUT/NANO_OUTPUT.ino
+# Both sketches use 115200 baud. No Arduino libraries belong in pip requirements.
+#
+# 5. OPTIONAL CLOUDFLARE TUNNEL - install on the machine hosting AquaPi:
+#   sudo mkdir -p --mode=0755 /usr/share/keyrings
+#   curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+#   echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
+#   sudo apt update
+#   sudo apt install cloudflared
+# Create a named tunnel in Cloudflare and run its supplied service-install
+# command with your private tunnel token. Then:
+#   sudo systemctl enable --now cloudflared
+# Route your registered hostname to http://127.0.0.1:5000 in Cloudflare.
+# Installing this package alone does not register a domain or configure a tunnel.
+# Source: https://pkg.cloudflare.com/
+# Camera setup: https://www.raspberrypi.com/documentation/computers/camera_software.html
+#
+# 6. START - set FISHTANK_ADMIN_PIN to your own password before public access:
+#   python main.py
+# Or, without the desktop GUI:
+#   python main.py --headless
+# Open http://127.0.0.1:5000 locally. Only one main.py instance should run.
+# Flask installs its own transitive dependencies (Jinja2, Click, etc.).
+# SQLite, threading, statistics and the other Python standard-library modules
+# are supplied by Python and must not be installed as similarly named packages.
+# Optional development checks: python -m pip install -r requirements-dev.txt
+#
+# PYTHON RUNTIME PACKAGES (installed by pip):
+Flask>=3.0,<4
+Werkzeug>=3.0,<4
+pyserial>=3.5,<4

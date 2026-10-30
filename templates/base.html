@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AquaPi · {{ title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=17">
+</head>
+<body class="audience-mode" data-page="{{ page }}">
+<div class="dashboard app-shell">
+  <header class="app-header">
+    <a class="app-brand" href="/" aria-label="AquaPi home"><span class="brand-mark" aria-hidden="true">≈</span>AquaPi</a>
+    <a id="role-text" class="access-link" href="/access">Viewer · Sign in</a>
+  </header>
+  <nav class="app-nav" aria-label="Main navigation">
+  {% for key, label, path in [('index','Overview','/'),('feeding','Feeding','/feeding'),('controls','Controls','/controls'),('sensors','Sensors','/sensors'),('camera','Camera','/camera'),('graphs','Graphs','/graphs'),('settings','Settings','/settings')] %}
+    <a href="{{ path }}" {% if page == key %}aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+  </nav>
+  <main id="main-content" class="page-content page-{{ page }}">
+    <div class="page-heading"><h1>{{ title }}</h1></div>
+    {% if page in ['feeding','controls','sensors','camera','settings'] %}
+    <p class="access-note" data-admin-hint><a href="/access">Sign in</a> to use controls.</p>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<script src="{{ url_for('static', filename='script.js') }}?v=17"></script>
+</body>
+</html>
