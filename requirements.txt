@@ -34,7 +34,7 @@
 # (ATmega328P or Old Bootloader as appropriate), and the correct serial port.
 # Library Manager, INPUT Nano: OneWire; DallasTemperature.
 # Library Manager, OUTPUT Nano: Adafruit PWM Servo Driver Library; accept its
-# dependencies, including Adafruit BusIO. Wire, EEPROM and AVR/C headers come with the core.
+# dependencies, including Adafruit BusIO. Wire and AVR/C headers come with the core.
 # INPUT: arduino/Nano_INPUT_Millis/Nano_INPUT_Millis.ino
 # OUTPUT: arduino/NANO_OUTPUT/NANO_OUTPUT.ino
 # Both sketches use 115200 baud. No Arduino libraries belong in pip requirements.

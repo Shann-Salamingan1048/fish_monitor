@@ -6,8 +6,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include <errno.h>
-#include <EEPROM.h>
-#include <stddef.h>
 
 // ========================== PIN DEFINITIONS ==========================
 
@@ -25,164 +23,39 @@ enum SensorBit : uint8_t { TEMP_BIT, PH_BIT, TURBIDITY_BIT, LOW_BIT, NORMAL_BIT,
 
 // ========================== pH CALIBRATION ==========================
 
-// Genuine two-point calibration uses measured ADC readings at pH 6.86 and 9.18.
-// ADC values MUST be captured from this individual sensor, not estimated from
-// the old pH 4.01 / 9.18 calibration. Saved EEPROM data is loaded at boot.
+// Fill these two ADC constants with YOUR stable raw-ADC averages in each buffer.
+// 0.0f means not entered yet. Never substitute the old 4.01 buffer's ADC here.
 constexpr float PH_BUFFER_686 = 6.86f;
 constexpr float PH_BUFFER_918 = 9.18f;
+constexpr float PH_ADC_686 = 0.0f;  // EDIT: your measured ADC in pH 6.86 buffer.
+constexpr float PH_ADC_918 = 0.0f;  // EDIT: your measured ADC in pH 9.18 buffer.
+
+// This PH-4502C setup's ADC decreases as pH increases.
+constexpr bool PH_CALIBRATION_VALID =
+  PH_ADC_686 > 0.0f && PH_ADC_686 < 1023.0f &&
+  PH_ADC_918 > 0.0f && PH_ADC_918 < 1023.0f &&
+  PH_ADC_686 - PH_ADC_918 >= 20.0f;
+// Compute the scale once at compile time, rather than divide on each report.
+constexpr float PH_PER_ADC = PH_CALIBRATION_VALID ?
+  (PH_BUFFER_918 - PH_BUFFER_686) / (PH_ADC_918 - PH_ADC_686) : 0.0f;
+
 constexpr uint8_t PH_SAMPLE_COUNT = 15;
-constexpr uint8_t PH_TRIM_COUNT = 3;     // Discard 3 lowest and 3 highest.
-constexpr float PH_EMA_ALPHA = 0.20f;  // Smoothing only, not calibration.
-constexpr uint8_t PH_STABLE_FRAMES = 5; // Five readings ~2 seconds apart.
-constexpr float PH_STABLE_MAX_SPREAD_ADC = 4.0f;
+constexpr uint8_t PH_TRIM_COUNT = 3;    // Average the middle 9; reject 6 outliers.
+constexpr float PH_EMA_ALPHA = 0.20f;   // More smoothing = slower response.
 static_assert(PH_TRIM_COUNT * 2 < PH_SAMPLE_COUNT, "Invalid pH trimming");
-
-// 14-byte record on AVR Nano; checksum detects corrupted/incomplete data.
-constexpr uint32_t PH_CAL_MAGIC = 0x50483639UL;
-struct PhCalibrationData {
-  uint32_t magic;
-  float adc686;
-  float adc918;
-  uint16_t crc;
-};
-
-float phCalAdc686 = 0.0f, phCalAdc918 = 0.0f;
-bool phCalibrated = false;
-bool phCalibrationMode = false;
-bool phCalibrationComplete = false;
-bool phCapture686 = false, phCapture918 = false;
-float phPending686 = 0.0f, phPending918 = 0.0f;
-float phRawADC = 0.0f;               // Raw trimmed-mean; sent as pHADC.
-float phHistory[PH_STABLE_FRAMES] = {};
-uint8_t phHistoryCount = 0, phHistoryNext = 0;
-bool phCalReportPending = false, phCalStatusPending = false;
-
-enum class PhCalEvent : uint8_t {
-  NONE, STARTED, STOPPED, NOT_IN_MODE, NOT_STABLE,
-  CAPTURED_686, CAPTURED_918, SAVED, INVALID, ALREADY_SAVED
-};
-PhCalEvent phCalEvent = PhCalEvent::NONE;
-
-uint16_t phCalibrationCrc(const PhCalibrationData &record) {
-  uint16_t crc = 0xFFFF;
-  const uint8_t *bytes = reinterpret_cast<const uint8_t *>(&record);
-  for (size_t i = 0; i < offsetof(PhCalibrationData, crc); ++i) {
-    crc ^= uint16_t(bytes[i]) << 8;
-    for (uint8_t bit = 0; bit < 8; ++bit) {
-      crc = (crc & 0x8000U) ? uint16_t((crc << 1) ^ 0x1021U) : uint16_t(crc << 1);
-    }
-  }
-  return crc;
-}
-
-bool validPhCalibration(float adc686, float adc918) {
-  // This interface's ADC falls as pH rises (as observed with the prior buffers).
-  return isfinite(adc686) && isfinite(adc918) &&
-         adc686 > 0.0f && adc686 < 1023.0f &&
-         adc918 > 0.0f && adc918 < 1023.0f &&
-         (adc686 - adc918) >= 20.0f;
-}
-
-void loadPhCalibration() {
-  PhCalibrationData record = {};
-  EEPROM.get(0, record);
-  if (record.magic == PH_CAL_MAGIC &&
-      record.crc == phCalibrationCrc(record) &&
-      validPhCalibration(record.adc686, record.adc918)) {
-    phCalAdc686 = record.adc686;
-    phCalAdc918 = record.adc918;
-    phCalibrated = true;
-  }
-}
-
-void savePhCalibration(float adc686, float adc918) {
-  PhCalibrationData record = {};
-  record.magic = PH_CAL_MAGIC;
-  record.adc686 = adc686;
-  record.adc918 = adc918;
-  record.crc = phCalibrationCrc(record);
-  EEPROM.put(0, record);  // Arduino EEPROM.put() updates changed bytes only.
-  phCalAdc686 = adc686;
-  phCalAdc918 = adc918;
-  phCalibrated = true;
-}
-
-void rememberPhRawADC(float adc) {
-  phHistory[phHistoryNext] = adc;
-  phHistoryNext = (phHistoryNext + 1) % PH_STABLE_FRAMES;
-  if (phHistoryCount < PH_STABLE_FRAMES) ++phHistoryCount;
-}
-
-bool phRawIsStable() {
-  if (phHistoryCount < PH_STABLE_FRAMES) return false;
-  float lowest = phHistory[0], highest = phHistory[0];
-  for (uint8_t i = 1; i < PH_STABLE_FRAMES; ++i) {
-    if (phHistory[i] < lowest) lowest = phHistory[i];
-    if (phHistory[i] > highest) highest = phHistory[i];
-  }
-  return (highest - lowest) <= PH_STABLE_MAX_SPREAD_ADC;
-}
-
-float phStableAdcAverage() {
-  float sum = 0.0f;
-  for (uint8_t i = 0; i < PH_STABLE_FRAMES; ++i) sum += phHistory[i];
-  return sum / PH_STABLE_FRAMES;
-}
-
-void capturePhCalibration(bool buffer686) {
-  if (!phCalibrationMode) { phCalEvent = PhCalEvent::NOT_IN_MODE; return; }
-  if (phCalibrationComplete) { phCalEvent = PhCalEvent::ALREADY_SAVED; return; }
-  if (!phRawIsStable()) { phCalEvent = PhCalEvent::NOT_STABLE; return; }
-
-  const float adc = phStableAdcAverage();
-  // Each capture needs a fresh stability window, even when retrying a buffer.
-  phHistoryCount = phHistoryNext = 0;
-  if (buffer686) {
-    phPending686 = adc;
-    phCapture686 = true;
-    phCalEvent = PhCalEvent::CAPTURED_686;
-  } else {
-    phPending918 = adc;
-    phCapture918 = true;
-    phCalEvent = PhCalEvent::CAPTURED_918;
-  }
-  if (phCapture686 && phCapture918) {
-    if (!validPhCalibration(phPending686, phPending918)) {
-      phCalEvent = PhCalEvent::INVALID;
-      return;  // The user may repeat either measurement.
-    }
-    savePhCalibration(phPending686, phPending918);
-    phCalibrationComplete = true;
-    phCalEvent = PhCalEvent::SAVED;
-  }
-}
+static_assert(PH_EMA_ALPHA > 0.0f && PH_EMA_ALPHA <= 1.0f, "Invalid pH smoothing");
+float phRawADC = 0.0f;                 // Trimmed mean, BEFORE exponential smoothing.
+bool phRawMode = false;               // Read-only bench diagnostics; never saves calibration.
+bool phRawReportPending = false;
 
 void writePhCalibrationStatus(Print &out) {
-  out.print(F("NANOINPUTSTATUS,PHCAL:NANO_2POINT_V2,PH_PIN:A1,CALIBRATED:"));
-  out.print(phCalibrated ? 1 : 0);
-  if (phCalibrated) {
-    out.print(F(",PH686_ADC:")); out.print(phCalAdc686, 2);
-    out.print(F(",PH918_ADC:")); out.print(phCalAdc918, 2);
-  }
-  out.println();
-}
-
-void writePhCalEvent(Print &out) {
-  out.print(F("NANOINPUTSTATUS,PHCAL:"));
-  switch (phCalEvent) {
-    case PhCalEvent::STARTED:       out.print(F("STARTED")); break;
-    case PhCalEvent::STOPPED:       out.print(F("STOPPED")); break;
-    case PhCalEvent::NOT_IN_MODE:   out.print(F("ERROR:START_REQUIRED")); break;
-    case PhCalEvent::NOT_STABLE:    out.print(F("ERROR:WAIT_FOR_STABLE_ADC")); break;
-    case PhCalEvent::CAPTURED_686:  out.print(F("CAPTURED_6.86,ADC:")); out.print(phPending686, 2); break;
-    case PhCalEvent::CAPTURED_918:  out.print(F("CAPTURED_9.18,ADC:")); out.print(phPending918, 2); break;
-    case PhCalEvent::SAVED:
-      out.print(F("SAVED,PH686_ADC:")); out.print(phCalAdc686, 2);
-      out.print(F(",PH918_ADC:")); out.print(phCalAdc918, 2);
-      break;
-    case PhCalEvent::INVALID:      out.print(F("ERROR:INVALID_ADC_PAIR")); break;
-    case PhCalEvent::ALREADY_SAVED: out.print(F("ERROR:STOP_OR_RESTART_CALIBRATION")); break;
-    case PhCalEvent::NONE:         out.print(F("NONE")); break;
+  out.print(F("NANOINPUTSTATUS,PHCAL:CODE_CONSTANTS,PH_PIN:A1,CALIBRATED:"));
+  out.print(PH_CALIBRATION_VALID ? 1 : 0);
+  if (PH_CALIBRATION_VALID) {
+    out.print(F(",PH686_ADC:")); out.print(PH_ADC_686, 2);
+    out.print(F(",PH918_ADC:")); out.print(PH_ADC_918, 2);
+  } else {
+    out.print(F(",ACTION:SET_PH_ADC_CONSTANTS"));
   }
   out.println();
 }
@@ -274,11 +147,11 @@ public:
 PacketWriter packet;
 
 bool phActive() {
-  return phCalibrationMode || (sensorEnabled(PH_BIT) &&
+  return phRawMode || (sensorEnabled(PH_BIT) &&
     (sensorMode == SensorMode::NORMAL || sensorMode == SensorMode::AUTO_QUALITY));
 }
 bool turbidityActive() {
-  return !phCalibrationMode && sensorEnabled(TURBIDITY_BIT) &&
+  return !phRawMode && sensorEnabled(TURBIDITY_BIT) &&
          sensorMode != SensorMode::FLOAT_ONLY;
 }
 void resetAcquisition() {
@@ -286,8 +159,7 @@ void resetAcquisition() {
   tempReady = tempValid = phReadingReady = floatsReady = false;
   turbidityReady = false;
   phRawADC = phAverageADC = 0.0f;
-  phHistoryCount = phHistoryNext = 0;
-  phCalReportPending = false;
+  phRawReportPending = false;
   floatValue = turbidityValue = F("WAITING");
   tempPending = false; adcTask = AdcTask::IDLE; sampleCount = 0;
   lastTempRead = now - tempInterval;
@@ -310,46 +182,23 @@ void handleCommand(char *message) {
   // Commands are ASCII; normalize only text, not numeric conversion semantics.
   for (char *p = message; *p; ++p) *p = toupper((unsigned char)*p);
 
-  // Explicit system OFF must stop acquisition, including calibration mode.
-  if (strcmp_P(message, PSTR("NANOINPUT,SYSTEM:OFF")) == 0) {
+  // Optional read-only pH ADC view for measuring your buffers with main.py stopped.
+  // There are no capture/save commands and no EEPROM reads or writes.
+  if (strcmp_P(message, PSTR("NANOINPUT,PHRAW:START")) == 0) {
     systemEnabled = false;
-    if (phCalibrationMode) phCalEvent = PhCalEvent::STOPPED;
-    phCalibrationMode = false;
+    phRawMode = true;
+    resetAcquisition();
+    return;
+  }
+  if (strcmp_P(message, PSTR("NANOINPUT,PHRAW:STOP")) == 0 ||
+      strcmp_P(message, PSTR("NANOINPUT,SYSTEM:OFF")) == 0) {
+    systemEnabled = phRawMode = false;
     resetAcquisition();
     systemStatusPending = true;
     return;
   }
-
-  // Calibration can run with the normal system OFF: no Pi heartbeat is needed.
-  if (strcmp_P(message, PSTR("NANOINPUT,PHCAL:START")) == 0) {
-    systemEnabled = false;
-    phCalibrationMode = true;
-    phCalibrationComplete = phCapture686 = phCapture918 = false;
-    phPending686 = phPending918 = 0.0f;
-    resetAcquisition();
-    phCalEvent = PhCalEvent::STARTED;
-    return;
-  }
-  if (strcmp_P(message, PSTR("NANOINPUT,PHCAL:STOP")) == 0) {
-    phCalibrationMode = false;
-    resetAcquisition();
-    phCalEvent = PhCalEvent::STOPPED;
-    return;
-  }
-  if (strcmp_P(message, PSTR("NANOINPUT,PHCAL:STATUS")) == 0) {
-    phCalStatusPending = true;
-    return;
-  }
-  if (strcmp_P(message, PSTR("NANOINPUT,PHCAL:6.86")) == 0) {
-    capturePhCalibration(true);
-    return;
-  }
-  if (strcmp_P(message, PSTR("NANOINPUT,PHCAL:9.18")) == 0) {
-    capturePhCalibration(false);
-    return;
-  }
-  // Ignore external system/mode/sensor commands during deliberate calibration.
-  if (phCalibrationMode) return;
+  // A Pi auto-arm must not interrupt a deliberate bench measurement session.
+  if (phRawMode) return;
 
   if (strcmp_P(message, PSTR("NANOINPUT,SYSTEM:OFF")) == 0 ||
       strcmp_P(message, PSTR("NANOINPUT,SYSTEM:ON")) == 0) {
@@ -408,10 +257,9 @@ void readSerialCommands() {
 }
 
 float calculatePH(float adc) {
-  // Only call when phCalibrated == true; no guessed neutral-buffer ADC.
-  // pH 6.86 and 9.18 use freshly measured ADC data saved in EEPROM.
-  return PH_BUFFER_686 + (adc - phCalAdc686) *
-         (PH_BUFFER_918 - PH_BUFFER_686) / (phCalAdc918 - phCalAdc686);
+  if (!PH_CALIBRATION_VALID || !isfinite(adc)) return NAN;
+  // Anchored form passes through both measured points without rounding ADC first.
+  return PH_BUFFER_686 + (adc - PH_ADC_686) * PH_PER_ADC;
 }
 
 void serviceAnalog(uint32_t now) {
@@ -445,9 +293,8 @@ void serviceAnalog(uint32_t now) {
       phRawADC = total / float(PH_SAMPLE_COUNT - 2 * PH_TRIM_COUNT);
       if (!phReadingReady) phAverageADC = phRawADC;
       else phAverageADC += PH_EMA_ALPHA * (phRawADC - phAverageADC);
-      rememberPhRawADC(phRawADC);
       phReadingReady = true;
-      if (phCalibrationMode) phCalReportPending = true;
+      if (phRawMode) phRawReportPending = true;
       adcTask = AdcTask::IDLE;
     }
   } else {
@@ -535,7 +382,7 @@ void sendSerialToRaspberryPi() {
   packet.print(F(",pH:"));
   if (!sensorEnabled(PH_BIT)) packet.print(F("DISABLED"));
   else if (!phActive()) packet.print(F("PAUSED"));
-  else if (!phReadingReady || !phCalibrated) packet.print(F("WAITING"));
+  else if (!phReadingReady || !PH_CALIBRATION_VALID) packet.print(F("WAITING"));
   else packet.print(calculatePH(phAverageADC), 2);
   packet.print(F(",pHADC:"));
   if (!sensorEnabled(PH_BIT)) packet.print(F("DISABLED"));
@@ -551,20 +398,15 @@ void sendSerialToRaspberryPi() {
 void serviceTransmit(uint32_t now) {
   if (!packet.busy()) {
     packet.beginPacket();
-    if (phCalEvent != PhCalEvent::NONE) {
-      writePhCalEvent(packet);
-      phCalEvent = PhCalEvent::NONE;
-    } else if (phCalStatusPending) {
-      phCalStatusPending = false;
-      writePhCalibrationStatus(packet);
-    } else if (phCalibrationMode && phCalReportPending) {
-      phCalReportPending = false;
-      packet.print(F("NANOINPUTSTATUS,PHCAL:LIVE,ADC:"));
+    if (phRawMode && phRawReportPending) {
+      phRawReportPending = false;
+      packet.print(F("NANOINPUTSTATUS,PHRAW:LIVE,pHADC:"));
       packet.print(phRawADC, 2);
-      packet.print(F(",STABLE:"));
-      packet.println(phRawIsStable() ? 1 : 0);
+      packet.print(F(",pH:"));
+      if (PH_CALIBRATION_VALID) packet.println(calculatePH(phAverageADC), 2);
+      else packet.println(F("WAITING"));
     } else if (systemStatusPending ||
-               (!systemEnabled && !phCalibrationMode && uint32_t(now-lastSerialSend) >= 2000)) {
+               (!systemEnabled && !phRawMode && uint32_t(now-lastSerialSend) >= 2000)) {
       systemStatusPending = false; lastSerialSend = now;
       packet.print(F("NANOINPUTSTATUS,SYSTEM:")); packet.println(systemEnabled ? F("ON") : F("OFF"));
     } else if (configStatusPending) {
@@ -588,7 +430,6 @@ void setup() {
   pinMode(floatSensorLowerMostPin, INPUT_PULLUP);
   pinMode(turbiditySensorPin, INPUT); pinMode(phSensorPin, INPUT);
   analogReference(DEFAULT);
-  loadPhCalibration();
   resetAcquisition();
   // Boot diagnostics only; runtime output is buffered and drained without waits.
   Serial.println(F("NANOINPUTSTATUS,READY:1,INPUTFW:ASYNC_V1,SYSTEMCTRL:V1,SYSTEM:OFF"));
@@ -596,7 +437,7 @@ void setup() {
   writePhCalibrationStatus(Serial);
 }
 void loop() {
-  if (systemEnabled && !phCalibrationMode &&
+  if (systemEnabled && !phRawMode &&
       uint32_t(millis()-lastHostHeartbeat) >= HOST_TIMEOUT_MS) {
     systemEnabled = false;
     resetAcquisition();
@@ -610,8 +451,8 @@ void loop() {
     }
     serviceAnalog(now);
     serviceTemperature(now);
-  } else if (phCalibrationMode) {
-    // Deliberate pH-only calibration: non-blocking, no heartbeat required.
+  } else if (phRawMode) {
+    // Read-only pH measurements: non-blocking, no heartbeat required.
     serviceAnalog(now);
   }
   serviceTransmit(now);

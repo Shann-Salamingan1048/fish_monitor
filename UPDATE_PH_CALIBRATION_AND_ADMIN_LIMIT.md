@@ -1,3 +1,5 @@
+> The input-calibration portion of this historical release note is superseded by UPDATE_MANUAL_PH_CONSTANTS.md. Current firmware uses constants in code, with no EEPROM saving. The Admin-limit and prediction-setting changes still apply.
+
 # AquaPi: prediction wording, Admin limit and reviewed input firmware
 
 ## What changed

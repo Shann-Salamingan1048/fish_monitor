@@ -1,3 +1,7 @@
+# Current input firmware correction: manual constants, no EEPROM
+
+Five host-simulation configurations passed: unset, synthetic measured pair, equal pair, reversed pair and ADC rail. Actual Nano builds passed: 12,152 bytes flash with unset constants; 12,398 with a synthetic configured pair; 703 bytes static RAM in both. The distributed constants remain explicit zero placeholders because the user will measure and enter them. No physical probe accuracy test was performed. The Python/UI/output firmware are unchanged from the prior release; earlier validation records below are historical. See UPDATE_MANUAL_PH_CONSTANTS.md for details.
+
 # Prediction settings, Admin capacity and input calibration — 30 October 2026
 
 156 Python tests passed; eight-page DOM checks and rendered browser checks passed at 390/1366 px. Input and output firmware host simulations passed. The input sketch compiled for the actual Arduino Nano ATmega328P Old Bootloader target: 14,230 bytes flash, 747 bytes static SRAM (1,301 bytes left for runtime). The enum declaration-order compile error in the uploaded sketch was corrected. See UPDATE_PH_CALIBRATION_AND_ADMIN_LIMIT.md for review details and library versions. No physical probe calibration verification or live Tk display test was performed.
