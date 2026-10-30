@@ -33,6 +33,7 @@ def isolated(tmp_path, monkeypatch):
     with admin_sessions._lock:
         admin_sessions._active.clear()
     monkeypatch.setattr(config, 'shutting_down', False)
+    monkeypatch.setattr(config, 'MAX_ADMIN_SESSIONS', 2)
     config.serial_ports.clear()
     monkeypatch.setattr(config, 'DB_FILE', str(tmp_path / 'test.db'))
     # Existing tests exercise state transitions without waiting; confirmation

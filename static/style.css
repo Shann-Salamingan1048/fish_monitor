@@ -1577,3 +1577,9 @@ i.fa-camera::before { content: '▣'; }
     .app-header .access-link { margin-left: 0; }
     .app-header .temperature-preference { flex-basis: 100%; justify-content: flex-end; }
 }
+.settings-form details .field-pair label { display: flex; flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; align-self: start; }
+.settings-form details .field-pair input { height: 44px; flex: none; }
+.settings-form small { line-height: 1.4; }
+@media (max-width: 600px) {
+    .settings-form details .field-pair { grid-template-columns: minmax(0, 1fr); }
+}

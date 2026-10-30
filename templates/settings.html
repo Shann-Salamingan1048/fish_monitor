@@ -19,8 +19,9 @@
 <details><summary>Advanced settings</summary><div class="field-pair">
 <label>Website viewers<input id="maxWebsiteViewers" type="number" min="1" step="1"></label>
 <label>Camera viewers<input id="maxCameraViewers" type="number" min="1" step="1"></label>
-<label>Trend observation (sec)<input id="predictionDelaySeconds" type="number" min="1" step="1"></label>
-<label>Prediction duration (sec)<input id="predictionAlertDurationSeconds" type="number" min="1" step="1"></label>
+<label>Readings to watch before predicting (seconds)<input id="predictionDelaySeconds" type="number" min="1" step="1" aria-describedby="prediction-watch-help"><small id="prediction-watch-help">Example: 30 checks roughly the last 30 seconds for a trend. It does not delay critical protection.</small></label>
+<label>Keep prediction visible (seconds)<input id="predictionAlertDurationSeconds" type="number" min="1" step="1"></label>
+<label>Maximum signed-in Admin devices<input id="maxAdminSessions" type="number" min="1" step="1" aria-describedby="admin-limit-help"><small id="admin-limit-help">Default: 2. Lowering this signs out the least recently active Admin sessions.</small></label>
 </div></details>
 <button id="save-limits" class="mode-btn" type="button">Save settings</button>
 <p id="mode-message" role="status" aria-live="polite"></p>

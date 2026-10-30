@@ -25,6 +25,7 @@ CAMERA_VIEWER_TIMEOUT = 8  # seconds without heartbeat before camera turns off
 MAX_CAMERA_VIEWERS = max(1, int(os.environ.get("FISHTANK_MAX_CAMERA_VIEWERS", "3")))
 WEBSITE_VIEWER_TIMEOUT = 20  # seconds without page/API activity before a slot is released
 MAX_WEBSITE_VIEWERS = max(1, int(os.environ.get("FISHTANK_MAX_WEBSITE_VIEWERS", "5")))
+MAX_ADMIN_SESSIONS = 2
 
 # Admin / audience access control.
 ADMIN_PIN = os.environ.get("FISHTANK_ADMIN_PIN", "admin123")
@@ -548,7 +549,7 @@ def load_persisted_settings():
     global TEMP_LIMIT_C, TEMP_OVERHEAT_LIMIT_C
     global TURBIDITY_LIMIT_NTU, TURBIDITY_CRITICAL_NTU
     global PH_LOW_LIMIT, PH_HIGH_LIMIT, PH_CRITICAL_LOW_LIMIT, PH_CRITICAL_HIGH_LIMIT
-    global PREDICTION_DELAY_SECONDS, PREDICTION_ALERT_DURATION_SECONDS, MAX_CAMERA_VIEWERS, MAX_WEBSITE_VIEWERS
+    global PREDICTION_DELAY_SECONDS, PREDICTION_ALERT_DURATION_SECONDS, MAX_CAMERA_VIEWERS, MAX_WEBSITE_VIEWERS, MAX_ADMIN_SESSIONS
 
     TEMP_LIMIT_C = load_float_setting("limit_temp", TEMP_LIMIT_C)
     TEMP_OVERHEAT_LIMIT_C = load_float_setting("limit_temp_critical", TEMP_OVERHEAT_LIMIT_C)
@@ -560,6 +561,9 @@ def load_persisted_settings():
     PH_CRITICAL_HIGH_LIMIT = load_float_setting("limit_ph_critical_high", PH_CRITICAL_HIGH_LIMIT)
     MAX_CAMERA_VIEWERS = max(1, load_int_setting("max_camera_viewers", MAX_CAMERA_VIEWERS))
     MAX_WEBSITE_VIEWERS = max(1, load_int_setting("max_website_viewers", MAX_WEBSITE_VIEWERS))
+    MAX_ADMIN_SESSIONS = max(1, load_int_setting("max_admin_sessions", MAX_ADMIN_SESSIONS))
+    import admin_sessions
+    admin_sessions.enforce_limit()
     PREDICTION_DELAY_SECONDS = load_float_setting("prediction_delay_seconds", PREDICTION_DELAY_SECONDS)
     PREDICTION_ALERT_DURATION_SECONDS = load_float_setting(
         "prediction_alert_duration_seconds",
@@ -573,13 +577,14 @@ def load_persisted_settings():
     set_db_value("prediction_alert_duration_seconds", PREDICTION_ALERT_DURATION_SECONDS)
     set_db_value("max_camera_viewers", MAX_CAMERA_VIEWERS)
     set_db_value("max_website_viewers", MAX_WEBSITE_VIEWERS)
+    set_db_value("max_admin_sessions", MAX_ADMIN_SESSIONS)
 
 
 def update_limits_from_payload(payload):
     global TEMP_LIMIT_C, TEMP_OVERHEAT_LIMIT_C
     global TURBIDITY_LIMIT_NTU, TURBIDITY_CRITICAL_NTU
     global PH_LOW_LIMIT, PH_HIGH_LIMIT, PH_CRITICAL_LOW_LIMIT, PH_CRITICAL_HIGH_LIMIT
-    global PREDICTION_DELAY_SECONDS, PREDICTION_ALERT_DURATION_SECONDS, MAX_CAMERA_VIEWERS, MAX_WEBSITE_VIEWERS, settings_version
+    global PREDICTION_DELAY_SECONDS, PREDICTION_ALERT_DURATION_SECONDS, MAX_CAMERA_VIEWERS, MAX_WEBSITE_VIEWERS, MAX_ADMIN_SESSIONS, settings_version
 
     updates = {
         "limit_temp": ("tempLimit", float, 0.0),
@@ -590,6 +595,7 @@ def update_limits_from_payload(payload):
         "limit_ph_critical_high": ("phCriticalHighLimit", float, 0.0),
         "max_camera_viewers": ("maxCameraViewers", int, 1),
         "max_website_viewers": ("maxWebsiteViewers", int, 1),
+        "max_admin_sessions": ("maxAdminSessions", int, 1),
         "prediction_delay_seconds": ("predictionDelaySeconds", float, 1.0),
         "prediction_alert_duration_seconds": ("predictionAlertDurationSeconds", float, 1.0),
     }
@@ -684,6 +690,7 @@ def get_public_limits():
         },
         "maxCameraViewers": MAX_CAMERA_VIEWERS,
         "maxWebsiteViewers": MAX_WEBSITE_VIEWERS,
+        "maxAdminSessions": MAX_ADMIN_SESSIONS,
         "predictionDelaySeconds": PREDICTION_DELAY_SECONDS,
         "predictionAlertDurationSeconds": PREDICTION_ALERT_DURATION_SECONDS,
         "trendWindowSeconds": TREND_WINDOW_SECONDS

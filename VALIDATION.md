@@ -1,3 +1,7 @@
+# Prediction settings, Admin capacity and input calibration — 30 October 2026
+
+156 Python tests passed; eight-page DOM checks and rendered browser checks passed at 390/1366 px. Input and output firmware host simulations passed. The input sketch compiled for the actual Arduino Nano ATmega328P Old Bootloader target: 14,230 bytes flash, 747 bytes static SRAM (1,301 bytes left for runtime). The enum declaration-order compile error in the uploaded sketch was corrected. See UPDATE_PH_CALIBRATION_AND_ADMIN_LIMIT.md for review details and library versions. No physical probe calibration verification or live Tk display test was performed.
+
 # Navigation, PIN and notification update — 30 October 2026
 
 - 150 Python tests passed, including hashed PIN persistence, both-session revocation, invalid-change rejection, all eight routes, background snapshot coalescing and unchanged notification redraw suppression.

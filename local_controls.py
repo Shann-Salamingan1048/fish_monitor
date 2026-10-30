@@ -19,10 +19,11 @@ LIMIT_FIELDS = (
     ('phHighLimit', 'Upper', ('ph', 'highLimit')),
     ('phCriticalLowLimit', 'Lower', ('ph', 'criticalLowLimit')),
     ('phCriticalHighLimit', 'Upper', ('ph', 'criticalHighLimit')),
-    ('predictionDelaySeconds', 'Trend observation (seconds)', ('predictionDelaySeconds',)),
-    ('predictionAlertDurationSeconds', 'Alert duration (seconds)', ('predictionAlertDurationSeconds',)),
+    ('predictionDelaySeconds', 'Readings to watch before predicting (seconds)', ('predictionDelaySeconds',)),
+    ('predictionAlertDurationSeconds', 'Keep prediction visible (seconds)', ('predictionAlertDurationSeconds',)),
     ('maxWebsiteViewers', 'Maximum dashboard viewers', ('maxWebsiteViewers',)),
     ('maxCameraViewers', 'Maximum camera viewers', ('maxCameraViewers',)),
+    ('maxAdminSessions', 'Maximum signed-in Admin devices', ('maxAdminSessions',)),
 )
 
 
@@ -152,13 +153,20 @@ class LocalControls(tk.Toplevel):
             r, c = divmod(i, 2)
             field = ttk.Frame(ph_groups[r] if r in ph_groups else limits)
             field.grid(row=0 if r in ph_groups else r, column=c, sticky='ew', padx=6, pady=4)
-            self.limit_labels[key] = ttk.Label(field, text=label)
+            self.limit_labels[key] = ttk.Label(field, text=label, wraplength=290)
             self.limit_labels[key].pack(anchor='w')
             ttk.Entry(field, textvariable=var, width=24).pack(fill='x')
+            hint = {
+                'predictionDelaySeconds': 'Example: 30 checks roughly the last 30 seconds for a rising or falling trend. It does not delay critical protection.',
+                'predictionAlertDurationSeconds': 'How long a prediction stays visible once shown.',
+                'maxAdminSessions': 'Default: 2. Lowering this signs out the least recently active Admin sessions.',
+            }.get(key)
+            if hint:
+                ttk.Label(field, text=hint, wraplength=290).pack(anchor='w', pady=(4, 0))
         limits.columnconfigure((0,1), weight=1)
-        ttk.Button(limits, text='Save alert settings', command=lambda: self.run(self.save_limits)).grid(row=6, column=0, sticky='w', pady=12)
+        ttk.Button(limits, text='Save alert settings', command=lambda: self.run(self.save_limits)).grid(row=7, column=0, sticky='w', pady=12)
         ttk.Label(limits, text='Outside the warning range: Warning. At or beyond a critical limit: Critical.',
-                  wraplength=550).grid(row=5, column=0, columnspan=2, sticky='w', padx=6, pady=8)
+                  wraplength=550).grid(row=6, column=0, columnspan=2, sticky='w', padx=6, pady=8)
         pin_panel = self.tabs['Admin PIN']
         ttk.Label(pin_panel, text='Change web Admin PIN', font=('Arial', 13, 'bold')).pack(anchor='w')
         self.pin_vars = [tk.StringVar() for _ in range(3)]
@@ -167,7 +175,7 @@ class LocalControls(tk.Toplevel):
             ttk.Entry(pin_panel, textvariable=var, show='•', width=30).pack(anchor='w')
         self.pin_save_button = ttk.Button(pin_panel, text='Save PIN', command=self.change_admin_pin)
         self.pin_save_button.pack(anchor='w', pady=14)
-        self.pin_feedback = tk.StringVar(value='Changing the PIN signs out both web Admin sessions.')
+        self.pin_feedback = tk.StringVar(value='Changing the PIN signs out all web Admin sessions.')
         ttk.Label(pin_panel, textvariable=self.pin_feedback, wraplength=540).pack(anchor='w')
         self._pin_results = queue.Queue(maxsize=1)
         self._pin_after = None

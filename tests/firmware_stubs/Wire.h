@@ -28,6 +28,7 @@ public:
  template<class T> void print(T v){std::ostringstream stream;stream<<v;print(stream.str().c_str());}
  void print(float v, int digits){std::ostringstream stream;stream<<std::fixed<<std::setprecision(digits)<<v;print(stream.str().c_str());}
  void print(uint8_t v){print(static_cast<unsigned>(v));}
+ void println(){write('\n');}
  template<class T> void println(T v){print(v);write('\n');}
  void println(float v,int digits){print(v,digits);write('\n');}
 };

@@ -13,7 +13,7 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
   let role='audience',fan={mode:'AUTO',on:false,available:true,confirmed:true},feeder={ready:true,busy:false};
   const sensors=Object.fromEntries(['temp','ph','turbidity','float_low','float_normal','float_upper'].map(k=>[k,{label:k,effect:'Sensor protection',enabled:true,status:'active',reading:k.startsWith('float')?true:'27'}]));
   const state={session:'run1',revision:1,sensors,disabled:[],allDisabled:false,inputApplied:true,coolerApplied:true};
-  const limits={temperature:{limit:30,overheatLimit:35},ph:{lowLimit:6.5,highLimit:8.5,criticalLowLimit:6,criticalHighLimit:9},maxWebsiteViewers:5,maxCameraViewers:3,predictionDelaySeconds:30,predictionAlertDurationSeconds:30};
+  const limits={temperature:{limit:30,overheatLimit:35},ph:{lowLimit:6.5,highLimit:8.5,criticalLowLimit:6,criticalHighLimit:9},maxWebsiteViewers:5,maxCameraViewers:3,maxAdminSessions:2,predictionDelaySeconds:30,predictionAlertDurationSeconds:30};
   const payload=()=>({ok:true,role,fan,feeder,limits,sensorControls:JSON.parse(JSON.stringify(state)),temp:27,ph:7,turbidity:'Clear',turbidity_adc:0,float_stat:'Normal',alerts:[],schedules:[],timezone:'Asia/Manila',servo:{tilt:90,pan:90},waterControl:{pumpActive:false},connection:{stale:false}});
   w.fetch=async(url,o={})=>{
    calls.push([url,o]);
@@ -61,8 +61,10 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
   }
   w.setTemperatureUnit('F');assert.equal(w.temperatureText(0),'32 °F');
   if(name==='settings'){
+   assert.equal(d.getElementById('maxAdminSessions').value,'2');d.getElementById('maxAdminSessions').value='3';
+   assert(d.getElementById('prediction-watch-help').textContent.includes('30 seconds'));
    assert.equal(d.getElementById('tempLimit').value,'86');d.getElementById('tempLimit').value='89.6';await w.loadAuthStatus(false);assert.equal(d.getElementById('tempLimit').value,'89.6');
-   d.getElementById('tempLimit').value='86';w.saveLimits();await tick();const saved=JSON.parse(calls.find(([u,o])=>u==='/api/limits'&&o.method==='PUT')[1].body);assert.equal(saved.tempLimit,30);assert.equal(saved.tempCriticalLimit,35);assert.equal(d.getElementById('mode-message').innerText,'Settings saved.');
+   d.getElementById('tempLimit').value='86';w.saveLimits();await tick();const saved=JSON.parse(calls.find(([u,o])=>u==='/api/limits'&&o.method==='PUT')[1].body);assert.equal(saved.maxAdminSessions,'3');assert.equal(saved.tempLimit,30);assert.equal(saved.tempCriticalLimit,35);assert.equal(d.getElementById('mode-message').innerText,'Settings saved.');
   }
   if(name==='index'){w.renderWaterControl({extractionOn:true,insertionOn:true,pumpActive:true});assert.equal(d.getElementById('pump-mode-val').innerText,'Both pumps');w.renderSmartAlerts({alerts:[]});assert.equal(d.getElementById('alert-summary').textContent,'No active alerts');}
   if(name==='graphs')assert(d.getElementById('tempChart').getAttribute('aria-label').includes('°F'));

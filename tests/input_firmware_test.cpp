@@ -22,7 +22,10 @@ int main() {
  setup();assert(!systemEnabled);advance(100);assert(!temperatureRequests);
  command("NANOINPUT,SYSTEM:ON");assert(!waitForConversion);assert(selectedAnalogReference==DEFAULT);
  assert(Serial.output.find("INPUTFW:ASYNC_V1")!=std::string::npos);
- assert(Serial.output.find("PHCAL:NANO_2POINT_V1")!=std::string::npos);
+ assert(Serial.output.find("PHCAL:NANO_2POINT_V2")!=std::string::npos);
+ assert(!phCalibrated);
+ // Test values here are simulated, not calibration values for the real probe.
+ phCalAdc686=900;phCalAdc918=800;phCalibrated=true;
  assert(Serial.output.find("PH6_ADC:")==std::string::npos);
  pinInputs[A0]=500;pinInputs[A1]=919;
  pinInputs[7]=HIGH;pinInputs[8]=LOW;pinInputs[9]=LOW;
@@ -44,14 +47,11 @@ int main() {
  packetText();assert(Serial.output.find("Temp:26.80")!=std::string::npos);
  assert(Serial.output.find("Water Level is Normal")!=std::string::npos);
  assert(Serial.output.find("Turbidity:Slightly Cloudy,TurbidityADC:500")!=std::string::npos);
- assert(std::fabs(calculatePH(1006.67f)-4.01f)<.0001f);
- // The midpoint and both halves follow the same line; 6.86 is no longer an anchor.
- assert(std::fabs(calculatePH(923.0f)-6.595f)<.0001f);
- assert(std::fabs(calculatePH(964.835f)-5.3025f)<.0001f);
- assert(std::fabs(calculatePH(881.165f)-7.8875f)<.0001f);
- assert(std::fabs(calculatePH(919.11f)-6.715174f)<.0001f);
- assert(Serial.output.find("pH:6.72,pHADC:919.00")!=std::string::npos);
- assert(std::fabs(calculatePH(839.33f)-9.18f)<.0001f);
+ assert(std::fabs(calculatePH(900)-6.86f)<.0001f);
+ assert(std::fabs(calculatePH(800)-9.18f)<.0001f);
+ assert(std::fabs(calculatePH(850)-8.02f)<.0001f);
+ assert(std::fabs(calculatePH(919)-6.4192f)<.0001f);
+ assert(Serial.output.find("pH:6.42,pHADC:919.00")!=std::string::npos);
  // A serial configuration command cancels a partial pH batch before publication.
  command("NANOINPUT,SENSORS:63,REV:14");advance(60);
  assert(!phReadingReady && sampleCount>0);
@@ -100,5 +100,40 @@ int main() {
  }
  command("NANOINPUT,SYSTEM:ON");advance(4001,false);assert(!systemEnabled);
  command("NANOINPUT,HEARTBEAT:1");assert(!systemEnabled);
+ // New calibration starts with no hardcoded/guessed ADC anchors.
+ phCalibrated=false;command("NANOINPUT,SYSTEM:ON");
+ command("NANOINPUT,SENSORS:63,REV:99");command("NANOINPUT,MODE:NORMAL");advance(800);packetText();
+ assert(Serial.output.find("pH:WAITING,pHADC:")!=std::string::npos);
+ command("NANOINPUT,SYSTEM:OFF");
+ command("NANOINPUT,PHCAL:6.86");assert(phCalEvent==PhCalEvent::NOT_IN_MODE);
+ command("NANOINPUT,PHCAL:START");assert(phCalibrationMode && !systemEnabled);
+ command("NANOINPUT,PHCAL:6.86");assert(phCalEvent==PhCalEvent::NOT_STABLE);
+ pinInputs[A1]=900;advance(11000,false);assert(phRawIsStable());
+ command("NANOINPUT,PHCAL:6.86");assert(phCapture686 && phPending686==900);
+ assert(!phRawIsStable()); // Captures cannot reuse the previous stability window.
+ command("NANOINPUT,PHCAL:9.18");assert(phCalEvent==PhCalEvent::NOT_STABLE);
+ pinInputs[A1]=800;advance(11000,false);
+ command("NANOINPUT,PHCAL:9.18");assert(phCalibrated && phCalibrationComplete && EEPROM.puts==1);
+ assert(phCalAdc686==900 && phCalAdc918==800);
+ command("NANOINPUT,PHCAL:9.18");assert(phCalEvent==PhCalEvent::ALREADY_SAVED && EEPROM.puts==1);
+ phCalibrated=false;loadPhCalibration();assert(phCalibrated); // Simulated restart.
+ EEPROM.bytes[4]^=1;phCalibrated=false;loadPhCalibration();assert(!phCalibrated); // CRC rejects damage.
+ EEPROM.bytes[4]^=1;loadPhCalibration();assert(phCalibrated);
+ assert(!validPhCalibration(800,900) && !validPhCalibration(900,890));
+ assert(!validPhCalibration(NAN,800) && !validPhCalibration(1023,800));
+ // OFF is honored even during calibration; host ON cannot interrupt calibration.
+ command("NANOINPUT,SYSTEM:ON");assert(!systemEnabled && phCalibrationMode);
+ command("NANOINPUT,SYSTEM:OFF");assert(!phCalibrationMode && !systemEnabled);
+ int beforeOff=analogReads[A1];advance(1000,false);assert(analogReads[A1]==beforeOff);
+ command("NANOINPUT,PHCAL:START");
+ // Trimmed mean discards three low and three high outliers.
+ const int samples[15]={0,900,1023,900,100,900,1000,900,200,900,990,900,900,900,900};
+ serviceAnalog(fakeMillis);
+ for(int value:samples){pinInputs[A1]=value;fakeMillis+=20;serviceAnalog(fakeMillis);}
+ assert(phRawADC==900 && phAverageADC==900);
+ // EMA alpha .2 converges without blocking and raw diagnostics stay unsmoothed.
+ pinInputs[A1]=800;advance(22000,false);
+ assert(phRawADC==800 && phAverageADC>800 && phAverageADC<810);
+ command("NANOINPUT,PHCAL:STOP");assert(!phCalibrationMode && !systemEnabled);
  std::cout<<"Input firmware timing/protocol/calibration tests passed.\n";
 }

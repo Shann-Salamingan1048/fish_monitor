@@ -200,7 +200,7 @@ def auth_login():
             return jsonify({"ok": False, "error": "Invalid admin PIN"}), 401
         if not admin_sessions.login():
             return jsonify(ok=False, role='audience', adminSessions=admin_sessions.status(),
-                           error='Two Admin sessions are active. Log out on another device first.'), 409
+                           error=f'Admin sign-in limit reached ({config.MAX_ADMIN_SESSIONS}). Sign out on another device first.'), 409
     return jsonify(ok=True, role='admin', adminSessions=admin_sessions.status())
 
 

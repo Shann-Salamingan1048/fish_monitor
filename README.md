@@ -1,3 +1,9 @@
+# Current update: prediction settings, Admin limit and 6.86/9.18 input calibration
+
+Read `UPDATE_PH_CALIBRATION_AND_ADMIN_LIMIT.md` first. It explains the renamed prediction setting, configurable signed-in Admin limit (default 2), reviewed input sketch, and step-by-step EEPROM calibration. **Upload the revised INPUT Nano only and capture the two buffers if no valid calibration is already stored.** Keep your Pi database. The output sketch is unchanged.
+
+Everything below describes earlier releases; their old input-calibration constants/upload advice do not override this update.
+
 # Latest update: navigation, Admin PIN and notifications
 
 Read `UPDATE_NAVIGATION_PIN_AND_NOTIFICATIONS.md` for installation and the current behavior. The web now has separate pages; the desktop has an Admin PIN editor; pH settings use Warning range and Critical limits with Lower/Upper fields; notification work runs in a background worker. Keep your existing database and firmware. No Nano upload is needed for this update.

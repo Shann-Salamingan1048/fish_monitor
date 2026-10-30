@@ -278,6 +278,7 @@ function fillLimitInputs(limits) {
         phCriticalHighLimit: limits.ph?.criticalHighLimit,
         maxCameraViewers: limits.maxCameraViewers,
         maxWebsiteViewers: limits.maxWebsiteViewers,
+        maxAdminSessions: limits.maxAdminSessions,
         predictionDelaySeconds: limits.predictionDelaySeconds,
         predictionAlertDurationSeconds: limits.predictionAlertDurationSeconds
     };
@@ -335,6 +336,7 @@ function saveLimits() {
         phCriticalLowLimit: document.getElementById("phCriticalLowLimit")?.value,
         phCriticalHighLimit: document.getElementById("phCriticalHighLimit")?.value,
         maxWebsiteViewers: document.getElementById("maxWebsiteViewers")?.value,
+        maxAdminSessions: document.getElementById("maxAdminSessions")?.value,
         maxCameraViewers: document.getElementById("maxCameraViewers")?.value,
         predictionDelaySeconds: document.getElementById("predictionDelaySeconds")?.value,
         predictionAlertDurationSeconds: document.getElementById("predictionAlertDurationSeconds")?.value

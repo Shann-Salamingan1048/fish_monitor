@@ -19,6 +19,10 @@ constexpr uint8_t floatSensorUpperMostPin = 7;
 constexpr uint8_t floatSensorNormalPin = 8;
 constexpr uint8_t floatSensorLowerMostPin = 9;
 
+// Declare this type before the first function so Arduino-generated prototypes compile.
+// Same bit order as sensor_control.SENSORS in the Raspberry Pi application.
+enum SensorBit : uint8_t { TEMP_BIT, PH_BIT, TURBIDITY_BIT, LOW_BIT, NORMAL_BIT, UPPER_BIT };
+
 // ========================== pH CALIBRATION ==========================
 
 // Genuine two-point calibration uses measured ADC readings at pH 6.86 and 9.18.
@@ -33,7 +37,7 @@ constexpr uint8_t PH_STABLE_FRAMES = 5; // Five readings ~2 seconds apart.
 constexpr float PH_STABLE_MAX_SPREAD_ADC = 4.0f;
 static_assert(PH_TRIM_COUNT * 2 < PH_SAMPLE_COUNT, "Invalid pH trimming");
 
-// 16-byte EEPROM record; checksum guards against corrupted/incomplete data.
+// 14-byte record on AVR Nano; checksum detects corrupted/incomplete data.
 constexpr uint32_t PH_CAL_MAGIC = 0x50483639UL;
 struct PhCalibrationData {
   uint32_t magic;
@@ -131,6 +135,8 @@ void capturePhCalibration(bool buffer686) {
   if (!phRawIsStable()) { phCalEvent = PhCalEvent::NOT_STABLE; return; }
 
   const float adc = phStableAdcAverage();
+  // Each capture needs a fresh stability window, even when retrying a buffer.
+  phHistoryCount = phHistoryNext = 0;
   if (buffer686) {
     phPending686 = adc;
     phCapture686 = true;
@@ -201,8 +207,6 @@ enum class SensorMode : uint8_t {
 
 SensorMode sensorMode = SensorMode::NORMAL;
 
-// Same bit order as sensor_control.SENSORS in the Raspberry Pi application.
-enum SensorBit : uint8_t { TEMP_BIT, PH_BIT, TURBIDITY_BIT, LOW_BIT, NORMAL_BIT, UPPER_BIT };
 uint8_t sensorMask = 63;
 uint32_t sensorRevision = 0;
 bool lowTriggered = false;
@@ -305,6 +309,16 @@ void writeModeStatus(Print &out) {
 void handleCommand(char *message) {
   // Commands are ASCII; normalize only text, not numeric conversion semantics.
   for (char *p = message; *p; ++p) *p = toupper((unsigned char)*p);
+
+  // Explicit system OFF must stop acquisition, including calibration mode.
+  if (strcmp_P(message, PSTR("NANOINPUT,SYSTEM:OFF")) == 0) {
+    systemEnabled = false;
+    if (phCalibrationMode) phCalEvent = PhCalEvent::STOPPED;
+    phCalibrationMode = false;
+    resetAcquisition();
+    systemStatusPending = true;
+    return;
+  }
 
   // Calibration can run with the normal system OFF: no Pi heartbeat is needed.
   if (strcmp_P(message, PSTR("NANOINPUT,PHCAL:START")) == 0) {
