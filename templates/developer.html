@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% set page = "developer" %}
+{% set title = "Developer option" %}
+{% block content %}
+<section class="card settings-form">
+  <h2>Sensor calibration</h2>
+  <p class="control-note">Calibration is saved on this Pi. No Nano upload required.</p>
+  <p id="calibration-mode" role="status"></p>
+  <div class="calibration-actions">
+    <button type="button" id="calibration-start" class="mode-btn">Start calibration</button>
+    <button type="button" id="calibration-finish" class="mode-btn">Finish calibration</button>
+  </div>
+  <p class="control-note">While calibrating, pH and clarity cannot start water replacement. Water-level protection stays active. Return both probes to the aquarium before finishing.</p>
+  <div class="calibration-live" aria-live="off">
+    <span>pH ADC: <strong id="live-ph-adc">—</strong></span>
+    <span>Turbidity ADC: <strong id="live-turbidity-adc">—</strong></span>
+  </div>
+  <small id="adc-note">Readings appear when the sensors are enabled and sampling.</small>
+</section>
+<form id="calibration-form" class="card settings-form">
+  <fieldset id="calibration-fields" disabled>
+    <legend>pH · Two-point calibration</legend>
+    <label class="calibration-toggle"><input type="checkbox" id="ph-custom"> Apply calibration on this Pi</label>
+    <div class="field-pair">
+      <label>ADC in pH 6.86 buffer<input id="adc686" type="number" min="1" max="1022" step="0.01" inputmode="decimal"></label>
+      <label>ADC in pH 9.18 buffer<input id="adc918" type="number" min="1" max="1022" step="0.01" inputmode="decimal"></label>
+    </div>
+    <p class="control-note">Use stable pH ADC readings from each buffer. These readings are already averaged; do not enter the pH number.</p>
+    <h2>Turbidity · ADC ranges</h2>
+    <label class="calibration-toggle"><input type="checkbox" id="turbidity-custom"> Apply custom ranges on this Pi</label>
+    <p class="control-note">Ranges include both endpoints and must cover 0–1023. The display name is yours; the category controls alerts and correction.</p>
+    <div id="turbidity-ranges" class="calibration-ranges"></div>
+    <button id="add-range" type="button" class="mode-btn">Add range</button>
+    <p class="control-note">Very Cloudy: critical correction. Cloudy / Slightly Cloudy: warning; an existing correction continues. Clear / Very Clear: correction stops.</p>
+    <button id="save-calibration" type="submit" class="mode-btn">Save calibration</button>
+  </fieldset>
+  <p id="calibration-message" role="status" aria-live="polite"></p>
+</form>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='developer.js') }}?v=20"></script>{% endblock %}
