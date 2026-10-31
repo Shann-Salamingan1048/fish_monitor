@@ -195,6 +195,7 @@ function setRoleUI(role, servo) {
     if (servo) currentServoPosition = servo;
 
     const isAdmin = currentRole === "admin";
+    if (!isAdmin) document.getElementById("developer-nav")?.remove();
 
     document.body.classList.toggle("admin-mode", isAdmin);
     document.body.classList.toggle("audience-mode", !isAdmin);
@@ -627,6 +628,14 @@ function renderWaterControl(status) {
     if (!status.manualOverride && status.levelCorrection === "overflow") text += " • Overflow: drain only until Normal";
     else if (!status.manualOverride && status.levelCorrection === "low") text += " • Low water: refill only until Normal";
 
+    const recovery = document.getElementById('sensor-recovery-status');
+    const settling = status.phSettling;
+    const recoveryText = status.calibrationActive
+        ? 'Calibration active: pH and clarity corrections paused. Return the probes to the aquarium, then finish calibration in Developer option.'
+        : settling?.active ? (settling.waitingForNormal
+            ? 'pH correction will wait 2 minutes after the pumps stop and water returns to Normal.'
+            : `pH settling: ${settling.remainingSeconds} s remaining before checking for correction.`) : '';
+    if (recovery) { recovery.textContent = recoveryText; recovery.hidden = !recoveryText; }
     const pending = status.pendingQuality || [];
     const pendingText = pending.length ? 'Checking ' + pending.map(item =>
         (item.sensor === 'ph' ? 'pH' : 'water clarity') + ' (' + item.seconds + ' / ' + status.confirmationSeconds + ' s)').join(', ') : '';
@@ -686,6 +695,11 @@ function loadAuthStatus(fillForm = true) {
             applyServerLimits(data.limits);
             if (fillForm) fillLimitInputs(data.limits);
             setRoleUI(data.role, data.servo);
+            if (data.developerOptions && data.role === 'admin' && !document.getElementById('developer-nav')) {
+                const link = document.createElement('a'); link.id = 'developer-nav';
+                link.href = '/developer'; link.textContent = 'Developer option';
+                document.querySelector('.app-nav')?.append(link);
+            }
             renderAdminSessions(data.adminSessions);
             renderWaterControl(data.waterControl);
         })
@@ -1175,8 +1189,8 @@ async function updateDashboard() {
             waterVal.innerText = waterLevelText;
         }
 
-        if (clarityVal && clarityVal.innerText !== turbidityText) {
-            updateClarityIndicator(turbidityText);
+        if (clarityVal) {
+            updateClarityIndicator(turbidityText, data.turbidityCategory);
         }
 
         if (phVal && phVal.innerText !== phText) {
@@ -1193,7 +1207,7 @@ async function updateDashboard() {
         const tempNumber = data.connection?.stale ? null : parseSensorNumber(data.temp);
         const phNumber = data.connection?.stale ? null : parseSensorNumber(data.ph);
         const floatNumber = data.connection?.stale ? null : parseWaterLevelState(waterLevelText);
-        const turbidityNumber = data.connection?.stale ? null : parseSensorNumber(data.turbidity);
+        const turbidityNumber = data.connection?.stale || data.turbidityCustom ? null : parseSensorNumber(data.turbidity);
 
         if (tempBar && tempNumber === null) tempBar.style.width = "0%";
         if (waterBar && floatNumber === null) waterBar.style.width = "0%";
@@ -1293,7 +1307,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 // Turbidity clarity indicator
-function updateClarityIndicator(value) {
+function updateClarityIndicator(value, category = value) {
     const element = document.getElementById("clarity-val");
     if (!element) return;
 
@@ -1304,13 +1318,13 @@ function updateClarityIndicator(value) {
 
     if (["PAUSED", "DISABLED", "WAITING", "ERROR"].includes(text.toUpperCase())) {
         element.className = "tag-blue";
-    } else if (text.includes("Very Cloudy")) {
+    } else if (String(category).includes("Very Cloudy")) {
         element.className = "tag-danger";
-    } else if (text.includes("Slightly Cloudy")) {
+    } else if (String(category).includes("Slightly Cloudy")) {
         element.className = "tag-yellow";
-    } else if (text.includes("Cloudy")) {
+    } else if (String(category).includes("Cloudy")) {
         element.className = "tag-warning";
-    } else if (text.includes("Clear")) {
+    } else if (String(category).includes("Clear")) {
         element.className = "tag-green";
     }
 }

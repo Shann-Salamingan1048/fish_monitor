@@ -29,7 +29,7 @@ def admin():
 
 
 @pytest.mark.parametrize('key,bad,kwargs', [('ph','3',{'ph':'3'}), ('turbidity','Very Cloudy',{'turbidity':'Very Cloudy'})])
-def test_disable_cancels_quality_action_and_remaining_sensor_works(key,bad,kwargs):
+def test_disable_cancels_quality_action_and_remaining_sensor_works(key,bad,kwargs,monkeypatch):
     connected()
     packet(**kwargs)
     assert water.get_status()['extractionOn']
@@ -40,6 +40,11 @@ def test_disable_cancels_quality_action_and_remaining_sensor_works(key,bad,kwarg
     assert not water.get_status()['pumpActive']
     assert not any(a['sensor'] == ('pH Level' if key == 'ph' else 'Turbidity') for a in alerts)
     packet(**({'turbidity':'Very Cloudy'} if key == 'ph' else {'ph':'3'}))
+    if key == 'turbidity':
+        assert not water.is_pump_active()
+        future = water.time.monotonic() + 121
+        monkeypatch.setattr(water.time, 'monotonic', lambda: future)
+        packet(ph='3')
     assert water.get_status()['extractionOn']
 
 

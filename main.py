@@ -7,6 +7,9 @@ import ipaddress
 import subprocess
 
 import config
+# Comment this line to hide Developer option and block its routes; restart main.py.
+config.DEVELOPER_OPTIONS = True
+import calibration
 import fan_control
 import feeding_control
 import water_control
@@ -52,6 +55,7 @@ def main():
     config.load_persisted_settings()
     fan_control.initialize()
     feeding_control.initialize()
+    calibration.initialize()
     sensor_control.initialize()
     stop_event = threading.Event()
     # Binding before hardware startup also prevents two copies from using the Nanos.

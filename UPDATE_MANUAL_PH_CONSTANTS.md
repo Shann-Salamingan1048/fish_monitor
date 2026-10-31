@@ -1,3 +1,5 @@
+> Optional firmware-only method. The newer `UPDATE_DEVELOPER_CALIBRATION.md` lets you enter ADC values on the web without uploading again. Pi calibration takes precedence while enabled.
+
 # Manual pH calibration constants — current input firmware
 
 This supersedes the previous EEPROM calibration instructions. There are no EEPROM reads, writes, capture commands or automatic calibration saves in the current input sketch. Existing EEPROM contents are ignored; there is no need to erase them.

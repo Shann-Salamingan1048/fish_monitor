@@ -13,6 +13,7 @@ import time
 
 import config
 import sensor_control
+import calibration
 
 
 _lock = config.sensor_lock
@@ -31,6 +32,8 @@ _state = {
     "lastPh": "--",
     "phCondition": "unknown",
     "levelCorrection": None,
+    "phSettlingRequired": False,
+    "phSettlingSince": None,
 }
 
 
@@ -41,6 +44,46 @@ _quality_limits = None
 def reset_confirmation():
     with _lock:
         _quality_samples.clear()
+
+
+def calibration_changed():
+    """Stop quality correction immediately; preserve active level protection."""
+    with _lock:
+        reset_confirmation()
+        _state['phSettlingRequired'] = True
+        _state['phSettlingSince'] = None
+        if _state['mode'] in {'auto_extract_ph', 'auto_extract_turbidity'}:
+            level = _state.get('levelCorrection')
+            if level == 'overflow':
+                _set_state_locked('auto_extract_overflow', 'overflowing', True, False)
+            elif level == 'low':
+                _set_state_locked('auto_insert', 'low_water_level', False, True)
+            else:
+                _set_state_locked('idle', 'calibration', False, False)
+
+
+def _update_ph_settling(level, now):
+    if not _state.get('phSettlingRequired'):
+        return False
+    if (_state['extractionOn'] or _state['insertionOn'] or level != 'normal'
+            or calibration.active()):
+        _state['phSettlingSince'] = None
+    elif _state.get('phSettlingSince') is None:
+        _state['phSettlingSince'] = now
+    elif now - _state['phSettlingSince'] >= config.PH_SETTLE_SECONDS:
+        _state['phSettlingRequired'] = False
+        _state['phSettlingSince'] = None
+    return _state['phSettlingRequired']
+
+
+def _ph_settling_status(now):
+    waiting = bool(_state.get('phSettlingRequired'))
+    since = _state.get('phSettlingSince')
+    # Countdowns end only when another packet confirms Normal and eligibility.
+    remaining = max(0, math.ceil(config.PH_SETTLE_SECONDS - (now - since))) if since is not None else None
+    return {'active': waiting and _state['mode'] != 'auto_extract_ph',
+            'remainingSeconds': remaining, 'durationSeconds': config.PH_SETTLE_SECONDS,
+            'waitingForNormal': waiting and since is None}
 
 
 def _quality_confirmed(key, condition, now):
@@ -74,6 +117,7 @@ def _normalize_level(value):
 
 
 def _normalize_turbidity(value):
+    value = calibration.category_for_label(value)
     text = " ".join(
         str(value or "")
         .strip()
@@ -203,6 +247,8 @@ def _set_state_locked(
         _state["manualOverride"] = bool(manual_override)
 
     if extraction or insertion:
+        _state["phSettlingRequired"] = True
+        _state["phSettlingSince"] = None
         if (
             _state["startedAt"] is None
             or (not old_extract and not old_insert)
@@ -234,6 +280,8 @@ def get_status():
     with _lock:
         status = dict(_state)
         now = time.monotonic()
+        status['phSettling'] = _ph_settling_status(now)
+        status['calibrationActive'] = calibration.active()
         status['confirmationSeconds'] = config.QUALITY_CONFIRM_SECONDS
         status['pendingQuality'] = [
             {'sensor': key, 'condition': item['condition'],
@@ -460,11 +508,12 @@ def process_sensor_update(
             reset_confirmation()
             _quality_limits = limits
         now = time.monotonic()
-        if _state['manualOverride'] or _state['sensorMode'] not in ('NORMAL', 'AUTO_QUALITY'):
+        settling = _update_ph_settling(level, now)
+        if calibration.active() or _state['manualOverride'] or _state['sensorMode'] not in ('NORMAL', 'AUTO_QUALITY'):
             reset_confirmation()
             quality_ph = quality_clarity = 'unknown'
         else:
-            ph_ready = _quality_confirmed('ph', _critical_ph_condition(ph_value), now)
+            ph_ready = _quality_confirmed('ph', None if settling else _critical_ph_condition(ph_value), now)
             turb_ready = _quality_confirmed('turbidity', 'very_cloudy' if clarity == 'very_cloudy' else None, now)
             quality_ph = ph_condition if ph_ready else 'unknown'
             quality_clarity = clarity if turb_ready else 'unknown'
@@ -477,9 +526,9 @@ def process_sensor_update(
 
         # Preserve a confirmed quality correction through level overrides.
         # Invalid/disabled quality data cannot keep its own correction running.
-        turb_active = (mode == "auto_extract_turbidity" and
+        turb_active = (not calibration.active() and mode == "auto_extract_turbidity" and
                        clarity in {"cloudy", "very_cloudy", "slightly_cloudy"})
-        ph_active = (mode == "auto_extract_ph" and
+        ph_active = (not calibration.active() and mode == "auto_extract_ph" and
                      ph_condition in {"acidic", "alkaline"})
         turb_active = turb_active or quality_clarity in {"cloudy", "very_cloudy"}
         ph_active = ph_active or quality_ph in {"acidic", "alkaline"}
@@ -525,4 +574,5 @@ def process_sensor_update(
         else:
             _set_state_locked("idle", "normal", False, False)
 
+        _update_ph_settling(level, now)
         return get_status()

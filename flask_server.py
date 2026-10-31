@@ -3,10 +3,13 @@ import threading
 import time
 import cv2
 import uuid
-from flask import Flask, render_template, jsonify, request, Response, session
+import sqlite3
+from urllib.parse import urlsplit
+from flask import Flask, render_template, jsonify, request, Response, session, abort, redirect
 import config
 import admin_sessions
 import admin_credentials
+import calibration
 
 # Try to import picamera2, but handle it gracefully if not available
 try:
@@ -178,12 +181,56 @@ def access_page():
     return render_template('access.html')
 
 
+@flask_app.context_processor
+def developer_navigation():
+    return {'developer_visible': bool(config.DEVELOPER_OPTIONS and is_admin())}
+
+
+@flask_app.route('/developer')
+def developer_page():
+    if not config.DEVELOPER_OPTIONS:
+        abort(404)
+    if not is_admin():
+        return redirect('/access')
+    return render_template('developer.html')
+
+
+@flask_app.route('/api/developer/calibration', methods=['GET', 'PUT', 'POST'])
+def developer_calibration_api():
+    if not config.DEVELOPER_OPTIONS:
+        abort(404)
+    error = require_admin_json()
+    if error:
+        return error
+    if request.method == 'GET':
+        return jsonify(ok=True, calibration=calibration.status())
+    # Same-origin JSON only; prevent cross-site authenticated calibration writes.
+    if request.headers.get('Sec-Fetch-Site') == 'cross-site':
+        return jsonify(ok=False, error='Use the AquaPi calibration page.'), 403
+    if request.headers.get('Origin') and urlsplit(request.headers['Origin']).netloc != request.host:
+        return jsonify(ok=False, error='Use the AquaPi calibration page.'), 403
+    data = request.get_json(silent=True)
+    try:
+        if request.method == 'POST':
+            if not isinstance(data, dict) or set(data) != {'active'}:
+                raise ValueError('Provide the calibration mode.')
+            result = calibration.set_active(data['active'])
+        else:
+            result = calibration.save(data)
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+    except (sqlite3.Error, OSError):
+        return jsonify(ok=False, error='Calibration was not saved. Check free space and database permissions.'), 503
+    return jsonify(ok=True, calibration=result)
+
+
 @flask_app.route("/api/auth/status")
 def auth_status():
     return jsonify({
         "ok": True,
         "role": "admin" if is_admin() else "audience",
         "adminSessions": admin_sessions.status(),
+        "developerOptions": bool(config.DEVELOPER_OPTIONS and is_admin()),
         "servo": get_servo_position(),
         "limits": get_public_limits(),
         "waterControl": water_control.get_status()
@@ -351,6 +398,8 @@ def sensors():
 
     response_data = sensor_snapshot.copy()
     response_data["float_stat"] = format_float_status(response_data.get("float_stat"))
+    response_data["turbidityCategory"] = calibration.category_for_label(sensor_snapshot.get("turbidity"))
+    response_data["turbidityCustom"] = calibration.is_custom_label(sensor_snapshot.get("turbidity"))
     response_data["alerts"] = alerts
     response_data["sensorControls"] = controls
     response_data["waterControl"] = water_status

@@ -53,15 +53,18 @@ def test_clarity_hysteresis_and_ph_handoff():
     packet(turbidity='Cloudy'); assert pair() == (False, False)
     packet(turbidity='Very Cloudy'); assert pair() == (True, True)
     packet(turbidity='Slightly Cloudy'); assert pair() == (True, True)
-    packet(turbidity='Clear', ph='3'); assert pair() == (True, True)
-    assert water.get_status()['qualitySensor'] == 'ph'
+    packet(turbidity='Clear', ph='3'); assert pair() == (False, False)
+    assert water.get_status()['phSettling']['active']
     packet(); assert pair() == (False, False)
 
 
-def test_quality_becomes_safe_during_level_override():
+def test_quality_becomes_safe_during_level_override(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(water.time, 'monotonic', lambda: now[0])
     connected(); packet(ph='3'); packet(ph='3', upper='1')
     packet(upper='1'); assert pair() == (True, False)
     packet(); assert pair() == (False, False)
+    now[0] += 121  # New pH correction waits after the preceding water change.
     packet(ph='3'); packet(ph='3',normal='0')
     packet(normal='0'); assert pair() == (False, True)
     packet(); assert pair() == (False, False)
@@ -79,8 +82,10 @@ def test_disabled_floats_do_not_override_both():
     connected(); sensors.apply({'float_upper':False})
     packet(ph='3',upper='1'); assert pair() == (True, True)
     sensors.apply({'float_low':False, 'float_normal':False})
-    packet(ph='3',normal='0',low='0',upper='1'); assert pair() == (True, True)
-    sensors.apply({'ph':False}); assert pair() == (False, False)
+    packet(ph='3',normal='0',low='0',upper='1'); assert pair() == (False, False)
+    assert water.get_status()['phSettling']['waitingForNormal']
+    packet(turbidity='Very Cloudy',normal='0',low='0',upper='1'); assert pair() == (True, True)
+    sensors.apply({'turbidity':False}); assert pair() == (False, False)
 
 
 def test_manual_both_auth_stop_restore_and_feeder_conflict():
@@ -99,7 +104,8 @@ def test_manual_both_auth_stop_restore_and_feeder_conflict():
     water.manual_action('stop_all'); packet(ph='3')
     assert pair() == (False, False)
     water.manual_action('auto_resume'); packet(ph='3')
-    assert pair() == (True, True)
+    assert pair() == (False, False)
+    assert water.get_status()['phSettling']['active']
     water.stop_all_for_shutdown(); assert pair() == (False, False)
     config.output_serial_ports.clear()
     with pytest.raises(ValueError): water.manual_action('both_start')

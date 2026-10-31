@@ -1,10 +1,18 @@
-# Current input firmware: manual ADC constants, no EEPROM
+# AquaPi — web calibration and pH settling
+
+Read **UPDATE_DEVELOPER_CALIBRATION.md** first. The Admin-only Developer option page edits pH 6.86/9.18 ADC calibration and named turbidity ADC ranges. Saved settings apply on the Pi to both web/desktop readings and automatic controls. No Nano upload is needed if the installed sketch already sends `pHADC` and `TurbidityADC`.
+
+After pumping stops and the level returns to Normal, pH-triggered correction waits 120 seconds, then requires fresh critical confirmation. Enable/hide the Developer page by uncommenting/commenting `config.DEVELOPER_OPTIONS = True` in `main.py` and restarting. Keep your existing database. Finish calibration before hiding the page.
+
+The included Nano sketches are unchanged. The older manual-constant instructions below describe an optional fallback; they are not required for Pi-side calibration. Earlier release notes below are historical.
+
+# Previous input-firmware release: manual ADC constants, no EEPROM
 
 Read `UPDATE_MANUAL_PH_CONSTANTS.md` first. Put your measured ADC averages for pH 6.86 and 9.18 into `PH_ADC_686` and `PH_ADC_918`, then upload the INPUT Nano. The supplied zeros are explicit placeholders; raw ADC is available but pH stays WAITING until you enter a valid pair. Noise filtering is retained. The Raspberry Pi application, UI and output firmware are unchanged.
 
 Previous EEPROM/calibration instructions below are superseded for the current input firmware.
 
-# Current update: prediction settings, Admin limit and 6.86/9.18 input calibration
+# Historical update: prediction settings, Admin limit and input calibration
 
 Read `UPDATE_PH_CALIBRATION_AND_ADMIN_LIMIT.md` first. It explains the renamed prediction setting, configurable signed-in Admin limit (default 2), reviewed input sketch, and step-by-step EEPROM calibration. **Upload the revised INPUT Nano only and capture the two buffers if no valid calibration is already stored.** Keep your Pi database. The output sketch is unchanged.
 

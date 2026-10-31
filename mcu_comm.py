@@ -17,6 +17,7 @@ from typing import Optional, List, Callable
 
 import config
 import fan_control
+import calibration
 
 from config import (
     PORT_1,
@@ -240,7 +241,9 @@ class MCUCommunicator:
             water_control.process_sensor_update(float_val, fields.get('Turbidity'), fields.get('pH'))
             sensor_control.refresh_display()
             sensor_data['float_stat'] = float_val
-            record_sensor_history_locked(sensor_data['temp'], sensor_data['turbidity'], sensor_data['ph'])
+            record_sensor_history_locked(sensor_data['temp'],
+                                         None if calibration.active() else sensor_data['turbidity'],
+                                         None if calibration.active() else sensor_data['ph'])
             snapshot = sensor_data.copy()
             history = {key: list(values) for key, values in sensor_history.items()}
             alerts = build_sensor_alerts(snapshot, history)

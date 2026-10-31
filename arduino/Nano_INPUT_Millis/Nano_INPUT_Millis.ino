@@ -44,7 +44,6 @@ constexpr uint8_t PH_TRIM_COUNT = 3;    // Average the middle 9; reject 6 outlie
 constexpr float PH_EMA_ALPHA = 0.20f;   // More smoothing = slower response.
 static_assert(PH_TRIM_COUNT * 2 < PH_SAMPLE_COUNT, "Invalid pH trimming");
 static_assert(PH_EMA_ALPHA > 0.0f && PH_EMA_ALPHA <= 1.0f, "Invalid pH smoothing");
-static_assert(PH_EMA_ALPHA > 0.0f && PH_EMA_ALPHA <= 1.0f, "Invalid pH smoothing");
 float phRawADC = 0.0f;                 // Trimmed mean, BEFORE exponential smoothing.
 bool phRawMode = false;               // Read-only bench diagnostics; never saves calibration.
 bool phRawReportPending = false;

@@ -13,6 +13,8 @@ def build_snapshot():
         readings = config.sensor_data.copy()
         history = {key: list(values) for key, values in config.sensor_history.items()}
         controls = sensor_control.get_status()
+        import water_control
+        controls["waterControl"] = water_control.get_status()
     alerts = build_sensor_alerts(readings, history)
     return version, readings, controls, alerts
 

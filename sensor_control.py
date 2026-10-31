@@ -110,6 +110,8 @@ def input_reconnected():
     global _input_revision
     with config.sensor_lock:
         _input_revision = None
+        import calibration
+        calibration.reset_readings()
         import water_control
         water_control.reset_confirmation()
         for key in _raw:
@@ -138,6 +140,8 @@ def accept_packet(fields):
             _input_revision = _revision
         elif not _legacy_allowed:
             return False
+        import calibration
+        calibration.apply_packet(fields)
         for key, field in (('temp', 'Temp'), ('ph', 'pH'), ('turbidity', 'Turbidity')):
             value = fields.get(field, 'WAITING')
             _raw[key] = value if _enabled[key] else None

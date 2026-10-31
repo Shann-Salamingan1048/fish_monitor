@@ -7,6 +7,7 @@ import time
 
 import config
 import sensor_control
+import calibration
 
 
 def extract_number(value):
@@ -30,6 +31,7 @@ def get_sensor_numeric(sensor_key, value):
     if sensor_key != "turbidity":
         return extract_number(value)
 
+    value = calibration.category_for_label(value)
     # Prefer a real numeric turbidity value when one exists.
     numeric = extract_number(value)
     if numeric is not None:
@@ -68,6 +70,8 @@ def get_sensor_numeric(sensor_key, value):
 
 def get_prediction_numeric(sensor_key, value):
     """Predictions use only actual numeric measurements."""
+    if sensor_key == 'turbidity' and calibration.is_custom_label(value):
+        return None
     return extract_number(value)
 
 
@@ -481,7 +485,7 @@ def _build_sensor_alerts_locked(sensor_snapshot, history_snapshot):
     sensor_snapshot = dict(sensor_snapshot)
     history_snapshot = dict(history_snapshot)
     for key in ('temp', 'ph', 'turbidity'):
-        if not sensor_control.enabled(key):
+        if not sensor_control.enabled(key) or (calibration.active() and key in ('ph', 'turbidity')):
             sensor_snapshot[key] = 'DISABLED'
             history_snapshot[key] = []
     if not sensor_control.all_floats_enabled():
@@ -606,7 +610,7 @@ def _build_sensor_alerts_locked(sensor_snapshot, history_snapshot):
         )
 
         category = str(sensor_snapshot.get("turbidity", "")).strip()
-        categorical = category.lower() in {"very cloudy", "cloudy", "slightly cloudy", "muddy", "dirty"}
+        categorical = calibration.is_custom_label(category) or category.lower() in {"very cloudy", "cloudy", "slightly cloudy", "muddy", "dirty"}
         _add_limit(
             alerts, "Turbidity", "Water clarity needs attention",
             (f"Water clarity is {category}." if categorical else

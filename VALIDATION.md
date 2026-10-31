@@ -1,3 +1,12 @@
+# Developer calibration and pH settling — 31 October 2026
+
+- 186 Python tests passed, covering pH anchors/midpoint, elapsed-time smoothing, invalid/stale ADC handling, revision/reconnect checks, SQLite persistence and failed-save atomicity, Admin access, disabled-feature routes, cross-site writes, range boundaries/validation, arbitrary labels and their alert/pump behavior, calibration-mode interlocks, settling restart and fresh critical confirmation.
+- Actual Flask + Chromium browser checks passed for nine pages at 390 px and 1366 px: no JavaScript page errors or horizontal overflow. Exercised Admin navigation, start/save/reload/finish, adding/removing rows, rejected overlaps, safe display of HTML-like labels, saved values and disabled form controls after finishing. Screenshots were visually inspected. No hardware was attached to the browser test server.
+- Python/JavaScript syntax checks passed. Both Nano sketches are byte-identical to the prior version; no firmware changes or new runtime dependencies were required. Historical Nano memory/build measurements below still describe the same firmware.
+- No physical aquarium/probe verification, live Tk display test, or Raspberry Pi performance measurement was possible. A 120-second delay is not a stability/accuracy guarantee.
+
+Historical validation records follow.
+
 # Current input firmware correction: manual constants, no EEPROM
 
 Five host-simulation configurations passed: unset, synthetic measured pair, equal pair, reversed pair and ADC rail. Actual Nano builds passed: 12,152 bytes flash with unset constants; 12,398 with a synthetic configured pair; 703 bytes static RAM in both. The distributed constants remain explicit zero placeholders because the user will measure and enter them. No physical probe accuracy test was performed. The Python/UI/output firmware are unchanged from the prior release; earlier validation records below are historical. See UPDATE_MANUAL_PH_CONSTANTS.md for details.

@@ -13,6 +13,7 @@ import feeding_scheduler as scheduler
 import water_control
 import sensor_control
 import fan_control
+import calibration
 import admin_sessions
 from flask_server import flask_app
 from mcu_comm import MCUCommunicator
@@ -42,6 +43,7 @@ def isolated(tmp_path, monkeypatch):
     fan_control.initialize()
     config.init_database()
     config.load_persisted_settings()
+    calibration.initialize()
     sensor_control.initialize()
     feeder.initialize()
     config.output_serial_ports.clear()
@@ -49,7 +51,7 @@ def isolated(tmp_path, monkeypatch):
     config.active_website_viewers.clear()
     config.last_sensor_received_at = 0
     with water_control._lock:
-        water_control._state.update(mode='idle', extractionOn=False, insertionOn=False, manualOverride=False, sensorMode='NORMAL', startedAt=None, levelCorrection=None, qualitySensor=None)
+        water_control._state.update(mode='idle', extractionOn=False, insertionOn=False, manualOverride=False, sensorMode='NORMAL', startedAt=None, levelCorrection=None, qualitySensor=None, phSettlingRequired=False, phSettlingSince=None)
     yield
     config.output_serial_ports.clear()
 

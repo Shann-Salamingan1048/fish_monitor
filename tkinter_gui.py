@@ -1515,6 +1515,9 @@ class FocusedMonitorApp:
         return self.text_main
 
     def _turbidity_status(self, value):
+        water = getattr(self, '_desktop_controls', {}).get('waterControl', {})
+        if water.get('calibrationActive'):
+            return 'Calibration active: automatic clarity correction paused.'
         if str(value).strip().upper() == "DISABLED":
             return "Disabled by operator; alerts and automatic actions bypassed."
         if str(value).strip().upper() == "PAUSED":
@@ -1539,6 +1542,14 @@ class FocusedMonitorApp:
         return self.accent_green
 
     def _ph_status(self, value):
+        water = getattr(self, '_desktop_controls', {}).get('waterControl', {})
+        if water.get('calibrationActive'):
+            return 'Calibration active: automatic pH correction paused.'
+        settling = water.get('phSettling', {})
+        if settling.get('active'):
+            if settling.get('waitingForNormal'):
+                return 'pH correction waits until pumps stop and level is Normal.'
+            return f"pH settling: {settling.get('remainingSeconds', 0)} seconds remaining."
         if str(value).strip().upper() == "DISABLED":
             return "Disabled by operator; alerts and automatic actions bypassed."
         if str(value).strip().upper() == "PAUSED":
