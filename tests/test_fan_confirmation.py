@@ -21,20 +21,6 @@ def clock(monkeypatch):
     return now
 
 
-@pytest.mark.parametrize('bad', [{'ph':'3'}, {'turbidity':'Very Cloudy'}])
-def test_spike_resets_and_sustained_condition_activates(clock, bad):
-    connected()
-    for t in (100, 101, 102, 104):
-        clock[0] = t; packet(**bad)
-        assert not water.is_pump_active()
-    assert water.get_status()['pendingQuality']
-    clock[0] = 104.5; packet()
-    assert not water.get_status()['pendingQuality']
-    for t in range(105, 110):
-        clock[0] = t; packet(**bad)
-        assert not water.is_pump_active()
-    clock[0] = 110; packet(**bad)
-    assert water.get_status()['extractionOn']
 
 
 def test_gap_invalid_and_opposite_ph_restart_confirmation(clock):
@@ -55,35 +41,14 @@ def test_gap_invalid_and_opposite_ph_restart_confirmation(clock):
     assert not water.get_status()['pendingQuality']
 
 
-def test_water_level_protection_is_immediate(clock):
-    connected(); packet(upper='1')
-    assert water.get_status()['extractionOn']
-    packet(low='0', normal='0', upper='0')
-    assert water.get_status()['insertionOn']
-    packet()
-    assert not water.is_pump_active()
 
 
-def test_normal_numbers_need_not_be_identical(clock):
-    connected()
-    for i, ph in enumerate(('9.1', '9.2', '9.0', '9.3', '9.15', '9.2')):
-        clock[0] = 100 + i; packet(ph=ph)
-    assert water.get_status()['extractionOn']
 
 
-def test_manual_reset_and_threshold_edit_restart(clock, monkeypatch):
-    connected(); packet(ph='10')
-    clock[0] += 2; packet(ph='10')
-    water.manual_action('stop_all'); water.manual_action('auto_resume')
-    clock[0] += 2; packet(ph='10')
-    assert not water.is_pump_active()
-    monkeypatch.setattr(config, 'PH_HIGH_LIMIT', 9.0)
-    clock[0] += 2; packet(ph='10')
-    assert water.get_status()['pendingQuality'][0]['seconds'] == 0
 
 
 def announce(mode='AUTO', state='OFF'):
-    fan.handle_status(f'NANOOUTPUT,COOLER:{state},FANCTRL:V1,FANMODE:{mode},FANPENDING:NONE,REASON:STATUS')
+    fan.handle_status(f'MegaOutput,COOLER:{state},FANCTRL:V1,FANMODE:{mode},FANPENDING:NONE,REASON:STATUS')
 
 
 def test_fan_auth_acknowledgement_disconnect_and_sync(clock):
@@ -97,15 +62,15 @@ def test_fan_auth_acknowledgement_disconnect_and_sync(clock):
     assert response.status_code == 200
     state = response.json['fan']
     assert state['mode'] == 'ON' and not state['confirmed'] and state['on'] is False
-    assert port.messages[-1] == 'NANOOUTPUT,FANMODE:ON\n'
+    assert port.messages[-1] == 'MegaOutput,FANMODE:ON\n'
     announce('ON', 'ON')
     assert client.get('/api/sensors').json['fan']['confirmed']
     sensors.apply({'temp':False})
     assert fan.get_status()['mode'] == 'ON'
     fan.disconnected()
     assert fan.get_status()['on'] is None
-    fan.handle_status('NANOOUTPUT,READY:1,FANCTRL:V1')
-    assert port.messages[-1] == 'NANOOUTPUT,FANMODE:ON\n'
+    fan.handle_status('MegaOutput,READY:1,FANCTRL:V1')
+    assert port.messages[-1] == 'MegaOutput,FANMODE:ON\n'
     announce('ON', 'ON')
     clock[0] += 7
     assert not fan.get_status()['available']
@@ -126,14 +91,14 @@ def test_fan_failed_write_and_shutdown():
     assert fan.get_status()['mode'] == 'AUTO'
     port.fail = False
     fan.stop_for_shutdown()
-    assert port.messages[-1] == 'NANOOUTPUT,FANMODE:OFF\n'
+    assert port.messages[-1] == 'MegaOutput,FANMODE:OFF\n'
 
 
-def test_invalid_temperature_interrupts_fan_confirmation():
+def test_temperature_packets_are_not_echoed_to_mega():
     port = connected()
     config.serial_ports.append(port)
     try:
         packet(temp='ERROR')
-        assert 'NANOOUTPUT,TEMP:INVALID\n' in port.messages
+        assert not any(',TEMP:' in m for m in port.messages)
     finally:
         config.serial_ports.remove(port)

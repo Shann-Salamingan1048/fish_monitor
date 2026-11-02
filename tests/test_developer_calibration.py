@@ -15,10 +15,10 @@ from test_system import isolated, connected
 PROFILE = {'ph': {'adc686': 900, 'adc918': 800}, 'turbidity': None}
 
 
-def packet(ph='7', pa='900', ta='900', clarity='Clear', level='Normal', revision=None):
+def packet(ph='6.86', pa='900', ta='900', clarity='Clear', level='Normal', revision=None):
     rev = sensor_control._revision if revision is None else revision
     return MCUCommunicator()._parse_sensor_message(
-        f'NANOINPUT,Temp:27,pH:{ph},pHADC:{pa},Turbidity:{clarity},TurbidityADC:{ta},FloatSensor:{level},SENSORCFG:{rev}')
+        f'MegaInput,Temp:27,pH:{ph},pHADC:{pa},Turbidity:{clarity},TurbidityADC:{ta},FloatSensor:{level},SENSORCFG:{rev}')
 
 
 @pytest.fixture
@@ -28,35 +28,36 @@ def clock(monkeypatch):
     return now
 
 
-def test_calibration_endpoints_persist_without_nano_commands(clock):
+def test_calibration_persists_and_syncs_mega_ram_without_actuator_commands(clock):
     port = connected()
     calibration.set_active(True)
     calibration.save(PROFILE)
-    assert not port.messages  # No programming, EEPROM or output commands.
+    assert any('MegaConfig,COMMIT:' in m for m in port.messages)
+    assert not any(',PUMP:' in m or ',FEED:' in m for m in port.messages)
     assert packet(pa='900')[0]['ph'] == '6.86'
     calibration.reset_readings()
-    assert packet(pa='800')[0]['ph'] == '9.18'
+    assert packet(pa='800',ph='9.18')[0]['ph'] == '9.18'
     calibration.initialize()
     assert calibration.status()['profile'] == PROFILE
     assert calibration.active()
-    assert packet(pa='850')[0]['ph'] == '8.02'
+    assert packet(pa='850',ph='8.02')[0]['ph'] == '8.02'
     assert not water.is_pump_active()
 
 
-def test_time_weighted_filter_ignores_retransmit_rate(clock):
+def test_host_preserves_mega_filtered_ph_on_repeated_packets(clock):
     calibration.set_active(True); calibration.save(PROFILE)
     packet(pa='900')
     for t in (100.5, 101, 101.5, 102):
-        clock[0] = t; snapshot, _ = packet(pa='800')
-    assert snapshot['ph'] == '7.32'  # 900 -> 880: alpha .20 over 2 seconds.
+        clock[0] = t; snapshot, _ = packet(pa='800',ph='7.32')
+    assert snapshot['ph'] == '7.32'  # Reported by Mega; the Pi must not apply another filter.
     assert calibration.status()['live']['phADC'] == 800
 
 
 @pytest.mark.parametrize('bad', ['NaN', 'inf', '-1', '1024', 'WAITING', 'PAUSED', ''])
-def test_missing_adc_never_falls_back_to_old_nano_ph(bad):
+def test_missing_adc_is_not_exposed_as_a_calibration_measurement(bad):
     calibration.set_active(True); calibration.save(PROFILE)
     assert packet()[0]['ph'] == '6.86'
-    assert packet(pa=bad, ph='9.7')[0]['ph'] == 'WAITING'
+    assert packet(pa=bad, ph='WAITING')[0]['ph'] == 'WAITING'
     assert calibration.status()['live']['phADC'] is None
     assert not water.is_pump_active()
 
@@ -78,7 +79,7 @@ def test_ranges_arbitrary_label_controls_alerts_not_text():
     connected()
     snapshot, alerts = packet(ta='500', clarity='Clear')
     assert snapshot['turbidity'] == 'Clear 123 <b>'
-    assert water.get_status()['mode'] == 'auto_extract_turbidity'
+    assert not water.is_pump_active()  # Only a hardware status frame updates pumps.
     alert = next(a for a in alerts if a['sensor'] == 'Turbidity')
     assert alert['severity'] == 'critical' and 'NTU' not in alert['message']
     assert get_prediction_numeric('turbidity', snapshot['turbidity']) is None
@@ -139,51 +140,12 @@ def test_admin_access_mode_save_and_cross_site_denial(monkeypatch):
     assert not calibration.active()
 
 
-def test_settling_starts_after_refill_stops_then_new_critical_confirmation(clock, monkeypatch):
-    connected(); monkeypatch.setattr(config,'QUALITY_CONFIRM_SECONDS',5.0)
-    packet(level='Very Low'); assert water.get_status()['insertionOn']
-    clock[0] = 110; packet(ph='9.5'); assert not water.is_pump_active()
-    assert water.get_status()['phSettling']['remainingSeconds'] == 120
-    for t in (120,180,229):
-        clock[0] = t; packet(ph='9.5'); assert not water.is_pump_active()
-    clock[0] = 230; packet(ph='9.5'); assert not water.is_pump_active()
-    for t in range(231,236): clock[0] = t; packet(ph='9.5')
-    assert water.get_status()['mode'] == 'auto_extract_ph'
 
 
-def test_new_pumping_or_non_normal_restarts_wait(clock):
-    connected(); packet(level='Very Low'); packet()
-    clock[0] += 60; packet(level='Overflowing')
-    assert water.get_status()['extractionOn']
-    assert water.get_status()['phSettling']['waitingForNormal']
-    clock[0] += 10; packet()
-    assert water.get_status()['phSettling']['remainingSeconds'] == 120
-    clock[0] += 90; packet(level='Low')
-    assert water.get_status()['phSettling']['waitingForNormal']
-    packet(); assert water.get_status()['phSettling']['remainingSeconds'] == 120
 
 
-def test_turbidity_and_level_still_protected_while_ph_waits(clock):
-    connected(); packet(clarity='Very Cloudy')
-    assert water.get_status()['mode'] == 'auto_extract_turbidity'
-    packet(ph='9.5',clarity='Clear')
-    assert not water.is_pump_active()  # No immediate handoff into pH.
-    packet(ph='9.5',clarity='Very Cloudy')
-    assert water.get_status()['mode'] == 'auto_extract_turbidity'
-    packet(ph='9.5',clarity='Very Cloudy',level='Overflowing')
-    assert water.get_status()['extractionOn'] and not water.get_status()['insertionOn']
 
 
-def test_buffer_readings_cannot_run_quality_pumps_but_floats_still_work():
-    connected(); packet(ph='9.5'); assert water.is_pump_active()
-    calibration.set_active(True); assert not water.is_pump_active()
-    _, alerts = packet(ph='9.5',clarity='Very Cloudy')
-    assert not water.is_pump_active()
-    assert not any(a['sensor'] in {'Turbidity','pH Level'} for a in alerts)
-    packet(ph='9.5',clarity='Very Cloudy',level='Very Low')
-    assert water.get_status()['insertionOn']
-    packet(ph='9.5',clarity='Very Cloudy',level='Overflowing')
-    assert water.get_status()['extractionOn'] and not water.get_status()['insertionOn']
 
 
 def test_default_fallback_unchanged_until_saved():
@@ -203,7 +165,7 @@ def test_failed_database_save_does_not_install_calibration(monkeypatch):
 
 
 def test_default_range_boundaries_match_firmware():
-    # Nano computes clarity = ADC / 1023 * 3000, then categorical cutoffs.
+    # Mega computes clarity = ADC / 1023 * 3000, then categorical cutoffs.
     rows = calibration.DEFAULT_RANGES
     for adc in range(1024):
         score = adc / 1023 * 3000

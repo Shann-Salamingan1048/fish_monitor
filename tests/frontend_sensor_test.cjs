@@ -38,7 +38,7 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
    const button=name==='feeding'?d.getElementById('feed-custom'):d.querySelector("button[onclick=\"sendCommand('feed')\"]");
    input.value='30';if(name==='camera')await w.sendCommand('feed');else await w.feederAction('feed');
    assert.deepEqual(JSON.parse(calls.filter(([u,o])=>u==='/api/feeder'&&o.method==='POST').at(-1)[1].body),{action:'feed',cycles:30});
-   assert(button.disabled);assert(!d.body.textContent.includes('Waiting for the Nano'));
+   assert(button.disabled);assert(!d.body.textContent.includes('Waiting for the Mega'));
    feeder={ready:true,busy:false,last:{status:'complete',cycles:30}};w.renderFeeder(feeder,{pumpActive:false});
    const prefix=name==='feeding'?'':'camera-';assert(d.getElementById(prefix+'feeder-status').textContent.includes('Completed'));assert.equal(d.getElementById(prefix+'feeder-message').textContent,'');assert(!button.disabled);
    w.renderFeeder(feeder,{pumpActive:true});w.setRoleUI('admin');assert(button.disabled);w.renderFeeder(feeder);assert(button.disabled);w.renderFeeder(feeder,{pumpActive:false});assert(!button.disabled);

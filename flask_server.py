@@ -444,7 +444,7 @@ def control():
     serial_message = build_camera_serial_message(command)
     sent = config.send_to_identified_output_serial_ports(serial_message)
     if not sent:
-        return jsonify(ok=False, error="Output Nano disconnected; command not sent"), 503
+        return jsonify(ok=False, error="MegaOutput disconnected; command not sent"), 503
     position = update_servo_position_for_command(command)
 
     return jsonify({

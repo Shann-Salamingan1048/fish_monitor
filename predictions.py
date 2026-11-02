@@ -76,7 +76,7 @@ def get_prediction_numeric(sensor_key, value):
 
 
 def format_float_status(value):
-    """Normalize the Nano's water-level states."""
+    """Normalize the Mega's water-level states."""
     if value is None or not str(value).strip() or str(value).strip() == "--":
         return "--"
 

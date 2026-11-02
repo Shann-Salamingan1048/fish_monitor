@@ -59,7 +59,7 @@ def isolated(tmp_path, monkeypatch):
 def connected(fail=False):
     port = FakeSerial(fail)
     config.output_serial_ports.append(port)
-    feeder.handle_status('NANOOUTPUT,READY:1,FEEDER:V3')
+    feeder.handle_status('MegaOutput,READY:1,FEEDER:V3')
     return port
 
 
@@ -94,12 +94,12 @@ def test_send_is_not_completion_and_busy_rejects_duplicate():
     port = connected()
     state = feeder.request_feed(4)
     job = state['active']['id']
-    assert port.messages == [f'NANOOUTPUT,FEED:CUSTOM,CYCLES:4,JOB:{job}\n']
+    assert port.messages == [f'MegaOutput,FEED:CUSTOM,CYCLES:4,JOB:{job}\n']
     assert state['active']['status'] == 'sent'
     with pytest.raises(ValueError): feeder.request_feed(4)
-    feeder.handle_status(f'NANOOUTPUT,FEED:STARTED,JOB:{job}')
+    feeder.handle_status(f'MegaOutput,FEED:STARTED,JOB:{job}')
     assert feeder.get_status()['active']['status'] == 'running'
-    feeder.handle_status(f'NANOOUTPUT,FEED:COMPLETE,JOB:{job}')
+    feeder.handle_status(f'MegaOutput,FEED:COMPLETE,JOB:{job}')
     assert not feeder.get_status()['busy']
     assert feeder.get_status()['last']['status'] == 'complete'
 
@@ -119,7 +119,7 @@ def test_disconnected_legacy_and_pumping_rejected():
     with pytest.raises(ValueError): feeder.request_feed()
     config.output_serial_ports.append(FakeSerial())
     with pytest.raises(ValueError): feeder.request_feed()
-    feeder.handle_status('NANOOUTPUT,FEEDER:V3')
+    feeder.handle_status('MegaOutput,FEEDER:V3')
     water_control._state['extractionOn'] = True
     with pytest.raises(ValueError): feeder.request_feed()
 
@@ -131,7 +131,7 @@ def test_scheduled_exactly_once_and_acknowledged():
     assert len(port.messages) == 1 and 'CYCLES:6' in port.messages[0]
     assert config.get_feeding_schedule(item['id'])['lastStatus'] == 'sent'
     job = feeder.get_status()['active']['id']
-    feeder.handle_status(f'NANOOUTPUT,FEED:COMPLETE,JOB:{job}')
+    feeder.handle_status(f'MegaOutput,FEED:COMPLETE,JOB:{job}')
     scheduler.process_due_feeding_schedules(now)
     assert len(port.messages) == 1
     assert config.get_feeding_schedule(item['id'])['lastStatus'] == 'complete'
@@ -184,7 +184,7 @@ def test_write_failure_and_restart_never_replay():
     scheduler.process_due_feeding_schedules(now)
     assert feeder.get_status()['last']['status'] == 'unknown'
     feeder.initialize()
-    feeder.handle_status('NANOOUTPUT,FEEDER:V3')
+    feeder.handle_status('MegaOutput,FEEDER:V3')
     scheduler.process_due_feeding_schedules(now)
     assert len(port.messages) == 1
 
@@ -193,7 +193,7 @@ def test_stop_waits_for_ack():
     port=connected(); feeder.request_feed(2)
     feeder.stop_feeder()
     assert feeder.get_status()['busy']
-    feeder.handle_status('NANOOUTPUT,FEED:STOPPED,JOB:0')
+    feeder.handle_status('MegaOutput,FEED:STOPPED,JOB:0')
     assert not feeder.get_status()['busy']
     assert feeder.get_status()['last']['status'] == 'cancelled'
 
@@ -231,7 +231,7 @@ def test_flask_auth_assets_schedule_and_feed_routes():
 def test_mcu_feedback_path():
     connected(); feeder.request_feed(1)
     job=feeder.get_status()['active']['id']
-    MCUCommunicator()._parse_output_message(f'NANOOUTPUT,FEED:COMPLETE,JOB:{job}')
+    MCUCommunicator()._parse_output_message(f'MegaOutput,FEED:COMPLETE,JOB:{job}')
     assert feeder.get_status()['last']['status']=='complete'
 
 
@@ -244,12 +244,12 @@ def test_no_arbitrary_cycle_cap(cycles):
     assert f'CYCLES:{cycles},' in port.messages[0]
     assert feeder.get_status()['active']['cycles'] == cycles
     feeder.stop_feeder()
-    feeder.handle_status('NANOOUTPUT,FEED:STOPPED,JOB:0')
+    feeder.handle_status('MegaOutput,FEED:STOPPED,JOB:0')
     assert not feeder.get_status()['busy']
 
 
 def test_previous_capped_firmware_requires_upgrade():
     config.output_serial_ports.append(FakeSerial())
-    feeder.handle_status('NANOOUTPUT,FEEDER:V2')
+    feeder.handle_status('MegaOutput,FEEDER:V2')
     with pytest.raises(ValueError):
         feeder.request_feed(30)

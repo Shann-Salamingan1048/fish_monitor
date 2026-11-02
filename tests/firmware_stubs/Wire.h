@@ -11,7 +11,7 @@ class __FlashStringHelper {};
 inline unsigned long fakeMillis = 0;
 inline unsigned long millis() {return fakeMillis;}
 inline void delay(unsigned long d) {fakeMillis += d;}
-inline int pinOutputs[20] = {};
+inline int pinOutputs[80] = {};
 inline void digitalWrite(int pin, int value) {pinOutputs[pin]=value;}
 inline void pinMode(int, int) {}
 inline int constrain(int v, int a, int b) {return v<a?a:v>b?b:v;}

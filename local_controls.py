@@ -186,7 +186,7 @@ class LocalControls(tk.Toplevel):
 
     def camera_command(self, command):
         if not config.send_to_identified_output_serial_ports(config.build_camera_serial_message(command)):
-            raise ValueError('Output Nano disconnected; camera command not sent.')
+            raise ValueError('MegaOutput disconnected; camera command not sent.')
         config.update_servo_position_for_command(command)
 
     def change_admin_pin(self):
@@ -259,7 +259,7 @@ class LocalControls(tk.Toplevel):
             ' cooling margin. On and Off override temperature control, including when the temperature sensor is disabled. '
             'Choose Auto to resume automatic cooling. Restarting the app restores Auto.')
         fan = fan_control.get_status()
-        text = 'Output Nano unavailable — connect it with updated fan firmware.'
+        text = 'MegaOutput unavailable — connect it with updated fan firmware.'
         if fan['available']:
             text = fan['mode'] + ' • Fan ' + ('ON' if fan['on'] else 'OFF')
             if not fan['confirmed']: text += ' • Waiting for confirmation'
@@ -275,12 +275,12 @@ class LocalControls(tk.Toplevel):
             status.set(item['status'].title() + (' • ' + value if item['status'] == 'active' else ''))
             button.configure(text='Disable' if item['enabled'] else 'Enable')
         self.sensor_sync.set('Settings saved on this Raspberry Pi. ' +
-                             ('Input Nano synchronized.' if controls['inputApplied'] else 'Waiting for updated input Nano to synchronize.') +
-                             ('' if controls['coolerApplied'] else ' Temperature control: waiting for updated output Nano.'))
+                             ('MegaInput synchronized.' if controls['inputApplied'] else 'Waiting for updated MegaInput to synchronize.') +
+                             ('' if controls['coolerApplied'] else ' Temperature control: waiting for updated MegaOutput.'))
         state = feeding_control.get_status()
         job = state['active'] or state['last']
         text = 'Automatic feeding: ' + ('PAUSED' if state['paused'] else 'enabled')
-        text += ' • Output Nano: ' + ('ready' if state['ready'] else 'unavailable / update firmware')
+        text += ' • MegaOutput: ' + ('ready' if state['ready'] else 'unavailable / update firmware')
         if job:
             text += f"\nLast serving: {job['cycles']} cycles • {job['status']}"
         self.feed_status.set(text)

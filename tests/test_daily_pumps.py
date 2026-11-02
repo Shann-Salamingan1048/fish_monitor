@@ -22,70 +22,14 @@ def pair():
     return status['extractionOn'], status['insertionOn']
 
 
-@pytest.mark.parametrize('bad', [{'ph':'3'}, {'ph':'10'}, {'turbidity':'Very Cloudy'}])
-def test_confirmed_quality_and_immediate_level_priority(clock, bad):
-    port = connected()
-    for t in range(100, 106):
-        clock[0] = t; packet(**bad)
-        assert pair() == ((True, True) if t == 105 else (False, False))
-    assert 'NANOOUTPUT,PUMP:BOTH_ON\n' in port.messages
-    packet(**bad, upper='1')
-    assert pair() == (True, False)
-    assert water.get_status()['sensorMode'] == 'AUTO_QUALITY'
-    packet(**bad)
-    assert pair() == (True, True)
-    packet(**bad, normal='0')
-    assert pair() == (False, True)  # Low
-    packet(**bad, normal='0', low='0')
-    assert pair() == (False, True)  # Very Low
-    packet(**bad)
-    assert pair() == (True, True)
-    packet()
-    assert pair() == (False, False)
-    commands = [x for x in port.messages if ',PUMP:' in x]
-    assert commands == [f'NANOOUTPUT,PUMP:{x}\n' for x in
-                        ('BOTH_ON', 'EXTRACT_ON', 'BOTH_ON', 'INSERT_ON', 'BOTH_ON', 'STOP_ALL')]
 
 
-def test_clarity_hysteresis_and_ph_handoff():
-    connected()
-    packet(turbidity='Slightly Cloudy'); assert pair() == (False, False)
-    packet(turbidity='Cloudy'); assert pair() == (False, False)
-    packet(turbidity='Very Cloudy'); assert pair() == (True, True)
-    packet(turbidity='Slightly Cloudy'); assert pair() == (True, True)
-    packet(turbidity='Clear', ph='3'); assert pair() == (False, False)
-    assert water.get_status()['phSettling']['active']
-    packet(); assert pair() == (False, False)
 
 
-def test_quality_becomes_safe_during_level_override(monkeypatch):
-    now = [100.0]
-    monkeypatch.setattr(water.time, 'monotonic', lambda: now[0])
-    connected(); packet(ph='3'); packet(ph='3', upper='1')
-    packet(upper='1'); assert pair() == (True, False)
-    packet(); assert pair() == (False, False)
-    now[0] += 121  # New pH correction waits after the preceding water change.
-    packet(ph='3'); packet(ph='3',normal='0')
-    packet(normal='0'); assert pair() == (False, True)
-    packet(); assert pair() == (False, False)
 
 
-def test_invalid_quality_stops_both_and_requires_new_confirmation(clock):
-    connected()
-    for t in range(100, 106): clock[0] = t; packet(ph='3')
-    assert pair() == (True, True)
-    packet(ph='ERROR'); assert pair() == (False, False)
-    clock[0] = 106; packet(ph='3'); assert pair() == (False, False)
 
 
-def test_disabled_floats_do_not_override_both():
-    connected(); sensors.apply({'float_upper':False})
-    packet(ph='3',upper='1'); assert pair() == (True, True)
-    sensors.apply({'float_low':False, 'float_normal':False})
-    packet(ph='3',normal='0',low='0',upper='1'); assert pair() == (False, False)
-    assert water.get_status()['phSettling']['waitingForNormal']
-    packet(turbidity='Very Cloudy',normal='0',low='0',upper='1'); assert pair() == (True, True)
-    sensors.apply({'turbidity':False}); assert pair() == (False, False)
 
 
 def test_manual_both_auth_stop_restore_and_feeder_conflict():
@@ -96,8 +40,6 @@ def test_manual_both_auth_stop_restore_and_feeder_conflict():
     assert pair() == (True, True)
     packet(upper='1'); assert pair() == (True, True)  # explicit manual override
     with pytest.raises(ValueError): feeder.request_feed(1)
-    water.restore_pump_state_to_hardware()
-    assert port.messages[-1] == 'NANOOUTPUT,PUMP:BOTH_ON\n'
     water.manual_action('extract_start'); assert pair() == (True, False)
     water.manual_action('both_start'); water.manual_action('insert_start')
     assert pair() == (False, True)
@@ -120,13 +62,13 @@ def test_stop_one_pump_preserves_other_and_pauses_automation(stop_action, expect
     water.manual_action('both_start')
     water.manual_action(stop_action)
     assert pair() == expected
-    assert port.messages[-1] == f'NANOOUTPUT,PUMP:{command}\n'
+    assert port.messages[-1] == f'MegaOutput,PUMP:{command}\n'
     assert water.get_status()['manualOverride']
     packet(ph='3')
     assert pair() == expected
     water.manual_action('insert_stop' if stop_action == 'extract_stop' else 'extract_stop')
     assert pair() == (False, False)
-    assert port.messages[-1] == 'NANOOUTPUT,PUMP:STOP_ALL\n'
+    assert port.messages[-1] == 'MegaOutput,PUMP:STOP_ALL\n'
 
 
 def test_daily_once_on_all_seven_days_and_next_run():
@@ -138,7 +80,7 @@ def test_daily_once_on_all_seven_days_and_next_run():
         scheduler.process_due_feeding_schedules(now)
         active = feeder.get_status()['active']
         assert active is not None and active['cycles'] == 4
-        feeder.handle_status(f"NANOOUTPUT,FEED:COMPLETE,JOB:{active['id']}")
+        feeder.handle_status(f"MegaOutput,FEED:COMPLETE,JOB:{active['id']}")
         scheduler.process_due_feeding_schedules(now)
         assert not feeder.get_status()['busy']
         upcoming = scheduler.get_next_feeding_run(config.get_feeding_schedules(), now)

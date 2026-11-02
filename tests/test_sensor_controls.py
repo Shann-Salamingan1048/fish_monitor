@@ -18,7 +18,7 @@ from test_system import isolated, connected, FakeSerial
 def packet(temp='27', ph='7', turbidity='Clear', low='1', normal='1', upper='0', revision=None):
     rev = sensors.get_status()['revision'] if revision is None else revision
     return MCUCommunicator()._parse_sensor_message(
-        f'NANOINPUT,Temp:{temp},pH:{ph},Turbidity:{turbidity},'
+        f'MegaInput,Temp:{temp},pH:{ph},Turbidity:{turbidity},'
         f'FloatLow:{low},FloatNormal:{normal},FloatUpper:{upper},SENSORCFG:{rev}')
 
 
@@ -30,43 +30,14 @@ def admin():
 
 @pytest.mark.parametrize('key,bad,kwargs', [('ph','3',{'ph':'3'}), ('turbidity','Very Cloudy',{'turbidity':'Very Cloudy'})])
 def test_disable_cancels_quality_action_and_remaining_sensor_works(key,bad,kwargs,monkeypatch):
-    connected()
-    packet(**kwargs)
-    assert water.get_status()['extractionOn']
+    port=connected()
+    config.register_mega_serial_port(port)
     sensors.apply({key:False})
-    assert not water.get_status()['pumpActive']
+    assert any('MegaInput,SENSORS:' in m for m in port.messages)
     snapshot, alerts = packet(**kwargs)
     assert snapshot[key] == 'DISABLED'
-    assert not water.get_status()['pumpActive']
     assert not any(a['sensor'] == ('pH Level' if key == 'ph' else 'Turbidity') for a in alerts)
-    packet(**({'turbidity':'Very Cloudy'} if key == 'ph' else {'ph':'3'}))
-    if key == 'turbidity':
-        assert not water.is_pump_active()
-        future = water.time.monotonic() + 121
-        monkeypatch.setattr(water.time, 'monotonic', lambda: future)
-        packet(ph='3')
-    assert water.get_status()['extractionOn']
-
-
-def test_disabled_ph_cancels_refill_owned_by_ph():
-    connected(); packet(ph='3'); packet(ph='3',normal='0',low='0')
-    assert water.get_status()['mode'] == 'auto_extract_ph'
-    assert water.get_status()['insertionOn'] and not water.get_status()['extractionOn']
-    sensors.apply({'ph':False})
-    assert not water.get_status()['pumpActive']
-    # The still-enabled low switch can independently request a refill.
-    packet(ph='3',normal='0',low='0')
-    assert water.get_status()['mode'] == 'auto_insert'
-
-
-def test_disabled_low_is_not_dry_and_bypasses_dry_run_rule():
-    connected(); sensors.apply({'float_low':False})
-    packet(low='0',normal='0')
-    assert not water.get_status()['pumpActive']
-    packet(low='0',normal='0',turbidity='Very Cloudy')
-    assert water.get_status()['extractionOn']
-    packet(low='0',normal='0',turbidity='Very Cloudy')
-    assert water.get_status()['extractionOn']
+    assert not any(',PUMP:' in m for m in port.messages)
 
 
 def test_disabled_upper_does_not_report_overflow():
@@ -77,33 +48,15 @@ def test_disabled_upper_does_not_report_overflow():
     assert not any('overflow' in a.get('title','').lower() for a in alerts)
 
 
-def test_disabled_normal_uses_upper_stop_and_does_not_invent_low():
-    connected(); sensors.apply({'float_normal':False})
-    packet(normal='1',low='1')
-    assert not water.get_status()['pumpActive']
-    packet(normal='1',low='0')
-    assert water.get_status()['insertionOn']
-    packet(normal='1',low='1')
-    assert water.get_status()['insertionOn']  # disabled normal cannot stop it
-    packet(normal='1',low='1',upper='1')
-    assert not water.get_status()['pumpActive']
 
 
-def test_all_floats_disabled_quality_can_work_without_false_refill():
-    connected(); sensors.apply({k:False for k in sensors.FLOAT_KEYS})
-    snap, alerts = packet(low='0',normal='0',upper='1',ph='3')
-    assert snap['float_stat'] == 'DISABLED'
-    assert water.get_status()['extractionOn']
-    assert not any(a['sensor']=='Water Level' for a in alerts)
-    packet(ph='7',low='0',normal='0',upper='1')
-    assert not water.get_status()['pumpActive']
 
 
 def test_temperature_disable_turns_cooler_off_and_stops_forwarding():
     port=connected(); packet(temp='40')
-    assert any('TEMP:40' in m for m in port.messages)
+    assert not any(',TEMP:' in m for m in port.messages)
     sensors.apply({'temp':False})
-    assert port.messages[-1] == 'NANOOUTPUT,TEMPSENSOR:OFF\n'
+    assert port.messages[-1] == 'MegaOutput,TEMPSENSOR:OFF\n'
     port.messages.clear()
     snap, alerts=packet(temp='40')
     assert snap['temp']=='DISABLED' and not any('TEMP:' in m for m in port.messages)

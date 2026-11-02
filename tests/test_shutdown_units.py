@@ -18,13 +18,13 @@ def test_shutdown_closes_all_write_paths_and_ignores_late_sensor_packets():
     water_control.manual_action('both_start')
     config.begin_shutdown()
     for port in (output, input_port):
-        assert 'NANOOUTPUT,SYSTEM:OFF\n' in port.messages[-1]
-        assert 'NANOINPUT,SYSTEM:OFF\n' in port.messages[-1]
+        assert 'MegaOutput,SYSTEM:OFF\n' in port.messages[-1]
+        assert 'MegaInput,SYSTEM:OFF\n' in port.messages[-1]
     counts = (len(output.messages), len(input_port.messages))
     packet(ph='3', temp='40')
-    assert not config.send_to_output_serial_ports('NANOOUTPUT,PUMP:BOTH_ON\n')
-    assert not MCUCommunicator()._send_serial_message(output, 'NANOOUTPUT,SYSTEM:ON\n')
-    assert not config.send_to_input_serial_ports('NANOINPUT,SYSTEM:ON\n')
+    assert not config.send_to_output_serial_ports('MegaOutput,PUMP:BOTH_ON\n')
+    assert not MCUCommunicator()._send_serial_message(output, 'MegaOutput,SYSTEM:ON\n')
+    assert not config.send_to_input_serial_ports('MegaInput,SYSTEM:ON\n')
     assert (len(output.messages), len(input_port.messages)) == counts
 
 
@@ -38,13 +38,13 @@ def test_shutdown_writes_after_inflight_command_and_rejects_next():
             return super().write(data)
     port = DelayedSerial()
     config.output_serial_ports.append(port)
-    sender = threading.Thread(target=config.send_to_output_serial_ports, args=('NANOOUTPUT,PUMP:BOTH_ON\n',))
+    sender = threading.Thread(target=config.send_to_output_serial_ports, args=('MegaOutput,PUMP:BOTH_ON\n',))
     sender.start(); assert started.wait(2)
     shutdown = threading.Thread(target=config.begin_shutdown);shutdown.start()
     release.set();sender.join(2);shutdown.join(2)
     assert not sender.is_alive() and not shutdown.is_alive()
     assert 'BOTH_ON' in port.messages[0] and 'SYSTEM:OFF' in port.messages[-1]
-    assert not config.send_to_output_serial_ports('NANOOUTPUT,FANMODE:ON\n')
+    assert not config.send_to_output_serial_ports('MegaOutput,FANMODE:ON\n')
 
 
 @pytest.mark.parametrize('c,f', [(0,32),(30,86),(-40,-40),(100,212),(26.8,80.24)])
@@ -83,34 +83,14 @@ def test_shutdown_rejects_web_actuation():
     assert response.status_code == 503
 
 
-@pytest.mark.parametrize('board', ['input', 'output'])
-def test_reader_arms_correct_board_before_restoring_controls_and_sends_heartbeat(monkeypatch, board):
-    import mcu_comm
-    controller=MCUCommunicator()
-    controller.running=True
-    class Reader(FakeSerial):
-        def __init__(self):
-            super().__init__()
-            self.lines=[b'NANOINPUTSTATUS,READY:1,INPUTFW:ASYNC_V1,SYSTEM:OFF\n'] if board=='input' else [b'NANOOUTPUT,READY:1,FEEDER:V3,FANCTRL:V1,SYSTEMCTRL:V1,SYSTEM:OFF\n']
-        @property
-        def in_waiting(self):
-            if not self.lines: controller.running=False
-            return len(self.lines)
-        def readline(self): return self.lines.pop(0)
-        def close(self): self.is_open=False
-    port=Reader()
-    monkeypatch.setattr(mcu_comm.serial,'Serial',lambda *a,**kw:port)
-    monkeypatch.setattr(mcu_comm.time,'sleep',lambda _:None)
-    controller.read_serial_data('/dev/test')
-    prefix='NANOINPUT' if board=='input' else 'NANOOUTPUT'
-    assert port.messages[0]==prefix+',SYSTEM:ON\n'
-    assert prefix+',HEARTBEAT:1\n' in port.messages
-    assert port.is_open is False
 
 
-def test_output_watchdog_status_latches_host_off():
+def test_output_watchdog_retries_without_latching_application_shutdown():
+    import serial
     port=connected()
-    MCUCommunicator()._parse_output_message('NANOOUTPUT,SYSTEM:OFF,SYSTEMCTRL:V1,REASON:HOST_TIMEOUT')
-    assert config.shutting_down
-    assert 'SYSTEM:OFF' in port.messages[-1]
+    with pytest.raises(serial.SerialException, match='HOST_TIMEOUT'):
+        MCUCommunicator()._parse_output_message('MegaOutput,SYSTEM:OFF,SYSTEMCTRL:V1,REASON:HOST_TIMEOUT')
+    assert not config.shutting_down
+    assert 'MegaOutput,PUMP:STOP_ALL\n' in port.messages
     assert not water_control.get_status()['pumpActive']
+    assert water_control.get_status()['manualOverride']

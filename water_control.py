@@ -1,11 +1,7 @@
-"""Automatic and manual aquarium water-pump controller.
+"""Manual pump requests and display state for the single Mega controller.
 
-Confirmed Very Cloudy or critical pH starts both pumps. Warnings alone do not start correction. Enabled float
-switches take immediate priority: overflow extracts only; Very Low starts
-refilling until Normal. Low protects an already-active quality correction. Quality readings stay active during correction.
-Turbidity correction continues through Slightly Cloudy until Clear/Very Clear.
-Manual drain, refill or both run until stopped and bypass automatic rules.
-Temperature pauses while pumping; feeding is postponed while either pump runs.
+Automatic decisions are evaluated by AquaPi_Mega.ino and reported over USB.
+The Pi never echoes those automatic decisions as new pump commands.
 """
 
 import math
@@ -38,7 +34,6 @@ _state = {
 
 
 _quality_samples = {}
-_quality_limits = None
 
 
 def reset_confirmation():
@@ -52,28 +47,10 @@ def calibration_changed():
         reset_confirmation()
         _state['phSettlingRequired'] = True
         _state['phSettlingSince'] = None
-        if _state['mode'] in {'auto_extract_ph', 'auto_extract_turbidity'}:
-            level = _state.get('levelCorrection')
-            if level == 'overflow':
-                _set_state_locked('auto_extract_overflow', 'overflowing', True, False)
-            elif level == 'low':
-                _set_state_locked('auto_insert', 'low_water_level', False, True)
-            else:
-                _set_state_locked('idle', 'calibration', False, False)
+        import mega_control
+        mega_control.sync(force=True)
 
 
-def _update_ph_settling(level, now):
-    if not _state.get('phSettlingRequired'):
-        return False
-    if (_state['extractionOn'] or _state['insertionOn'] or level != 'normal'
-            or calibration.active()):
-        _state['phSettlingSince'] = None
-    elif _state.get('phSettlingSince') is None:
-        _state['phSettlingSince'] = now
-    elif now - _state['phSettlingSince'] >= config.PH_SETTLE_SECONDS:
-        _state['phSettlingRequired'] = False
-        _state['phSettlingSince'] = None
-    return _state['phSettlingRequired']
 
 
 def _ph_settling_status(now):
@@ -86,67 +63,10 @@ def _ph_settling_status(now):
             'waitingForNormal': waiting and since is None}
 
 
-def _quality_confirmed(key, condition, now):
-    """A condition, not an identical numeric value, must persist across packets."""
-    if condition is None:
-        _quality_samples.pop(key, None)
-        return False
-    prior = _quality_samples.get(key)
-    if (prior is None or prior['condition'] != condition or
-            now - prior['last'] > config.QUALITY_MAX_PACKET_GAP_SECONDS):
-        prior = {'condition': condition, 'since': now, 'last': now, 'elapsed': 0.0}
-        _quality_samples[key] = prior
-    prior['last'] = now
-    prior['elapsed'] = now - prior['since']
-    return prior['elapsed'] >= config.QUALITY_CONFIRM_SECONDS
 
 
-def _normalize_level(value):
-    text = str(value or "").strip().lower().replace("_", " ").replace("-", " ")
-
-    if "overflow" in text:
-        return "overflow"
-    if "very low" in text:
-        return "very_low"
-    if "normal" in text:
-        return "normal"
-    if "low" in text:
-        return "low"
-
-    return "unknown"
 
 
-def _normalize_turbidity(value):
-    value = calibration.category_for_label(value)
-    text = " ".join(
-        str(value or "")
-        .strip()
-        .lower()
-        .replace("_", " ")
-        .split()
-    )
-
-    if text == "very cloudy":
-        return "very_cloudy"
-    if text == "cloudy":
-        return "cloudy"
-    if text == "slightly cloudy":
-        return "slightly_cloudy"
-    if text == "very clear":
-        return "very_clear"
-    if text == "clear":
-        return "clear"
-
-    # Legacy numeric turbidity packets use the same thresholds as alerts.
-    try:
-        number = float(text)
-        if math.isfinite(number) and number >= 0:
-            if number >= config.TURBIDITY_CRITICAL_NTU: return "very_cloudy"
-            if number >= config.TURBIDITY_LIMIT_NTU: return "cloudy"
-            return "clear"
-    except (TypeError, ValueError):
-        pass
-    return "unknown"
 
 
 def _parse_ph(value):
@@ -180,12 +100,6 @@ def _ph_condition(value):
     return "safe"
 
 
-def _critical_ph_condition(value):
-    ph = _parse_ph(value)
-    if ph is None: return None
-    if ph <= config.PH_CRITICAL_LOW_LIMIT: return 'acidic'
-    if ph >= config.PH_CRITICAL_HIGH_LIMIT: return 'alkaline'
-    return None
 
 
 def _send_pump(command):
@@ -352,16 +266,11 @@ def sensor_settings_changed(changed):
     """Cancel an automatic action whose input was deliberately removed."""
     with _lock:
         reset_confirmation()
-        mode = _state['mode']
-        affected = (bool(set(changed) & set(sensor_control.FLOAT_KEYS)) or
-                    (mode == 'auto_extract_ph' and 'ph' in changed) or
-                    (mode == 'auto_extract_turbidity' and 'turbidity' in changed))
-        if affected and not _state['manualOverride']:
-            _set_state_locked('idle', 'sensor_settings_changed', False, False)
+        # The updated sensor mask lets the Mega cancel affected local actions.
 
 
 def restore_sensor_mode_to_hardware():
-    """Re-send the current mode after the input Nano reconnects/resets."""
+    """Re-send the current mode after the MegaInput reconnects/resets."""
     with _lock:
         reset_confirmation()
         mode = _state["sensorMode"]
@@ -378,10 +287,18 @@ def _pump_command(extraction, insertion):
     return "STOP_ALL"
 
 
-def restore_pump_state_to_hardware():
-    """Re-send the complete pump pair after the output Nano reconnects."""
+
+
+def pause_for_connection_loss():
+    """Latch pumps stopped across USB loss; operator explicitly resumes control."""
     with _lock:
-        return _send_pump(_pump_command(_state["extractionOn"], _state["insertionOn"]))
+        reset_confirmation()
+        _send_pump('STOP_ALL')
+        _set_state_locked('manual_idle', 'connection_lost', False, False,
+                          manual_override=True)
+        _state['levelCorrection'] = None
+        _state['phSettlingRequired'] = True
+        _state['phSettlingSince'] = None
 
 
 def stop_all_for_shutdown():
@@ -405,7 +322,12 @@ def manual_action(action):
     with _lock:
         reset_confirmation()
         if action in {"extract_start", "insert_start", "both_start"} and not config.output_serial_ports:
-            raise ValueError("Output Nano disconnected; cannot start a pump")
+            raise ValueError("MegaOutput disconnected; cannot start a pump")
+        # Stop old motion before AUTO; ensure an idle stop also exits AUTO.
+        if action == 'auto_resume':
+            _send_pump('STOP_ALL')
+        else:
+            config.send_to_identified_output_serial_ports('MegaOutput,WATERMODE:MANUAL\n')
         if action == "both_start":
             _set_state_locked("manual_both", "manual", True, True, manual_override=True)
 
@@ -468,7 +390,29 @@ def manual_action(action):
                 "Unknown water-control action"
             )
 
+        if action == 'auto_resume':
+            config.send_to_identified_output_serial_ports('MegaOutput,WATERMODE:AUTO\n')
         return get_status()
+
+
+def accept_mega_status(fields):
+    """Display hardware decisions without sending them back as manual commands."""
+    allowed = {'idle','manual_idle','manual_extract','manual_insert','manual_both',
+               'auto_extract_ph','auto_extract_turbidity','auto_extract_overflow','auto_insert'}
+    mode = fields.get('WATER')
+    if mode not in allowed or fields.get('MODE') not in {'NORMAL','AUTO_QUALITY','FLOAT_ONLY'}:
+        return
+    with _lock:
+        if config.shutting_down:
+            return
+        _state.update(mode=mode, reason='mega_local', extractionOn=fields.get('EXTRACT')=='1',
+                      insertionOn=fields.get('INSERT')=='1', manualOverride=fields.get('MANUAL')=='1',
+                      sensorMode=fields['MODE'], updatedAt=time.time(),
+                      phSettlingRequired=fields.get('SETTLING')=='1')
+        remaining = int(fields.get('REMAIN','-1'))
+        _state['phSettlingSince'] = (time.monotonic() - max(0, config.PH_SETTLE_SECONDS-remaining)
+                                    if remaining >= 0 else None)
+        _state['startedAt'] = (_state['startedAt'] or time.time()) if is_pump_active() else None
 
 
 def process_sensor_update(
@@ -477,7 +421,6 @@ def process_sensor_update(
     ph_value,
 ):
     """Evaluate automatic water-control rules using the newest input packet."""
-    global _quality_limits
     with _lock:
         # Callers cannot bypass an operator override by supplying old values.
         if not sensor_control.all_floats_enabled():
@@ -486,8 +429,6 @@ def process_sensor_update(
             turbidity = 'DISABLED'
         if not sensor_control.enabled('ph'):
             ph_value = 'DISABLED'
-        level = _normalize_level(water_level)
-        clarity = _normalize_turbidity(turbidity)
         ph_condition = _ph_condition(ph_value)
         _state["lastWaterLevel"] = str(
             water_level or "--"
@@ -501,78 +442,5 @@ def process_sensor_update(
         _state["phCondition"] = ph_condition
         _state["updatedAt"] = time.time()
 
-        limits = (config.PH_LOW_LIMIT, config.PH_HIGH_LIMIT, config.PH_CRITICAL_LOW_LIMIT,
-                  config.PH_CRITICAL_HIGH_LIMIT, config.TURBIDITY_LIMIT_NTU,
-                  config.TURBIDITY_CRITICAL_NTU, config.QUALITY_CONFIRM_SECONDS)
-        if _quality_limits != limits:
-            reset_confirmation()
-            _quality_limits = limits
-        now = time.monotonic()
-        settling = _update_ph_settling(level, now)
-        if calibration.active() or _state['manualOverride'] or _state['sensorMode'] not in ('NORMAL', 'AUTO_QUALITY'):
-            reset_confirmation()
-            quality_ph = quality_clarity = 'unknown'
-        else:
-            ph_ready = _quality_confirmed('ph', None if settling else _critical_ph_condition(ph_value), now)
-            turb_ready = _quality_confirmed('turbidity', 'very_cloudy' if clarity == 'very_cloudy' else None, now)
-            quality_ph = ph_condition if ph_ready else 'unknown'
-            quality_clarity = clarity if turb_ready else 'unknown'
-
-        # Manual mode intentionally ignores all automatic stop conditions.
-        if _state["manualOverride"]:
-            return get_status()
-
-        mode = _state["mode"]
-
-        # Preserve a confirmed quality correction through level overrides.
-        # Invalid/disabled quality data cannot keep its own correction running.
-        turb_active = (not calibration.active() and mode == "auto_extract_turbidity" and
-                       clarity in {"cloudy", "very_cloudy", "slightly_cloudy"})
-        ph_active = (not calibration.active() and mode == "auto_extract_ph" and
-                     ph_condition in {"acidic", "alkaline"})
-        turb_active = turb_active or quality_clarity in {"cloudy", "very_cloudy"}
-        ph_active = ph_active or quality_ph in {"acidic", "alkaline"}
-
-        # Latch a level correction until Normal, including the intermediate
-        # float state between the low and normal switches.
-        level_correction = _state.get("levelCorrection")
-        if level == "overflow":
-            level_correction = "overflow"
-        elif level == "very_low" or (level == "low" and (turb_active or ph_active)):
-            # A Low warning cannot start idle refilling. It can prevent draining
-            # during an already-confirmed critical quality correction.
-            level_correction = "low"
-        elif level == "low" and level_correction == "overflow":
-            # A warning can stop unsafe draining without starting a new refill.
-            level_correction = None
-        elif level == "normal":
-            level_correction = None
-        elif (level_correction == "overflow" and
-              not sensor_control.enabled("float_normal") and
-              sensor_control.float_reading("float_upper") is False):
-            level_correction = None
-        _state["levelCorrection"] = level_correction
-
-        if turb_active or ph_active:
-            quality_mode = "auto_extract_turbidity" if turb_active else "auto_extract_ph"
-            reason = "cloudy_water" if turb_active else "ph_too_" + ph_condition
-            extraction = level_correction != "low"
-            insertion = level_correction != "overflow"
-            if level_correction:
-                reason += "_" + level_correction + "_priority"
-            _set_state_locked(quality_mode, reason, extraction, insertion)
-        elif level_correction == "overflow":
-            # Preserve the existing upper-stop fallback when Normal is disabled:
-            # a refill stops at Upper; an independent overflow can drain until
-            # Upper clears. Never infer a Normal signal from a disabled switch.
-            if mode == "auto_insert" and not sensor_control.enabled("float_normal"):
-                _set_state_locked("idle", "upper_level_stop", False, False)
-            else:
-                _set_state_locked("auto_extract_overflow", "overflowing", True, False)
-        elif level_correction == "low":
-            _set_state_locked("auto_insert", "low_water_level", False, True)
-        else:
-            _set_state_locked("idle", "normal", False, False)
-
-        _update_ph_settling(level, now)
+        # The status frame reports hardware decisions; never echo them as commands.
         return get_status()

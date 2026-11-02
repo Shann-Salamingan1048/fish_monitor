@@ -1,4 +1,4 @@
-"""Shared fan override; requested mode and Nano-confirmed state stay distinct."""
+"""Shared fan override; requested mode and Mega-confirmed state stay distinct."""
 import time
 import config
 
@@ -7,7 +7,7 @@ _supported = False
 _reported_mode = None
 _on = None
 _pending = 'NONE'
-_reason = 'Waiting for output Nano'
+_reason = 'Waiting for MegaOutput'
 _last_seen = 0.0
 _last_sent = 0.0
 
@@ -32,7 +32,7 @@ def sync():
         if not _supported or not config.output_serial_ports:
             return False
         _last_sent = time.monotonic()
-        return config.send_to_identified_output_serial_ports(f'NANOOUTPUT,FANMODE:{_mode}\n')
+        return config.send_to_identified_output_serial_ports(f'MegaOutput,FANMODE:{_mode}\n')
 
 
 def retry_sync():
@@ -68,12 +68,12 @@ def set_mode(mode):
         raise ValueError('Choose Auto, On or Off for the fan.')
     with config.sensor_lock:
         if not get_status()['available']:
-            raise ValueError('Fan unavailable: connect the output Nano with the updated fan firmware.')
+            raise ValueError('Fan unavailable: connect the MegaOutput with the updated fan firmware.')
         previous = _mode
         _mode = mode.upper()
         if not sync():
             _mode = previous
-            raise ValueError('Fan command could not be sent. Check the output Nano connection.')
+            raise ValueError('Fan command could not be sent. Check the MegaOutput connection.')
         _reported_mode = None  # Wait for firmware acknowledgement.
         return get_status()
 

@@ -42,7 +42,7 @@
         const live = state.live;
         $('live-ph-adc').textContent = live.phADC ?? '—';
         $('live-turbidity-adc').textContent = live.turbidityADC ?? '—';
-        $('adc-note').textContent = !live.fresh ? 'Waiting for fresh ADC data. Check the Input Nano connection.' :
+        $('adc-note').textContent = !live.fresh ? 'Waiting for fresh ADC data. Check the MegaInput connection.' :
             'Enable the sensors to read ADC. Measurements pause during level-only or manual pumping.';
         if (fill) {
             $('ph-custom').checked = Boolean(state.profile.ph);

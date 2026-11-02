@@ -24,45 +24,17 @@ def test_sustained_warning_never_starts_pumps(clock,values):
         assert not water.get_status()['pendingQuality']
     assert not any('PUMP:BOTH_ON' in m or 'PUMP:INSERT_ON' in m or 'PUMP:EXTRACT_ON' in m for m in port.messages)
     if values.get('temp'):
-        assert any('TEMP:34.00' in m and 'COOLERTHRESHOLD:35.00' in m for m in port.messages)
+        assert not any(',TEMP:' in m for m in port.messages)  # Temperature is local.
 
 
-@pytest.mark.parametrize('values',[{'ph':'6.0'},{'ph':'9.0'},{'turbidity':'Very Cloudy'}])
-def test_exact_critical_boundary_requires_confirmation(clock,values):
-    connected()
-    for t in range(100,106):
-        clock[0]=t;packet(**values)
-        assert water.is_pump_active() == (t==105)
 
 
-def test_warning_cancels_pending_critical_confirmation(clock):
-    connected();packet(ph='9.0')
-    clock[0]=104;packet(ph='8.7')
-    assert not water.get_status()['pendingQuality']
-    for t in range(105,111):
-        clock[0]=t;packet(ph='9.0')
-        assert water.is_pump_active() == (t==110)
 
 
-def test_critical_refill_finishes_through_low_warning():
-    connected();packet(normal='0',low='0')
-    assert water.get_status()['insertionOn']
-    packet(normal='0',low='1')
-    assert water.get_status()['insertionOn']
-    packet();assert not water.is_pump_active()
-    packet(normal='0',low='1');assert not water.is_pump_active()
 
 
-def test_overflow_recovery_cannot_keep_draining_at_low():
-    connected();packet(upper='1');assert water.get_status()['extractionOn']
-    packet(normal='0',low='1',upper='0');assert not water.is_pump_active()
 
 
-def test_ph_recovery_latches_until_safe_without_warning_restart():
-    connected();packet(ph='9.1');assert water.is_pump_active()
-    packet(ph='8.7');assert water.is_pump_active()
-    packet(ph='8');assert not water.is_pump_active()
-    packet(ph='8.7');assert not water.is_pump_active()
 
 
 @pytest.mark.parametrize('level,severity',[('Low','warning'),('Very Low','critical'),('Overflowing','critical')])
@@ -80,14 +52,15 @@ def test_clarity_alert_uses_category_without_fake_ntu(clarity,severity):
 
 
 def test_custom_critical_limits_control_dispatch(clock,monkeypatch):
+    import mega_control
     port=connected()
     monkeypatch.setattr(config,'PH_CRITICAL_HIGH_LIMIT',10)
     monkeypatch.setattr(config,'TEMP_OVERHEAT_LIMIT_C',37)
-    for t in range(100,107):clock[0]=t;packet(ph='9.5',temp='36')
-    assert not water.is_pump_active()
-    assert 'COOLERTHRESHOLD:37.00' in port.messages[-1]
-    for t in range(107,113):clock[0]=t;packet(ph='10')
-    assert water.is_pump_active()
+    mega_control.sync(force=True)
+    assert 'PH:10,' in port.messages[-1] and 'FAN:37,' in port.messages[-1]
+    for t in range(100,113):clock[0]=t;packet(ph='10',temp='36')
+    assert not water.is_pump_active()  # The host cannot independently actuate.
+
 
 
 class Var:

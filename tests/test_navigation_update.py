@@ -70,7 +70,7 @@ def test_separate_pages_render_with_navigation(page):
     assert '<title>AquaPi' in html
     if page not in ('feeding',): assert 'id="feeding-schedule-form"' not in html
     if page != 'settings': assert 'id="phCriticalHighLimit"' not in html
-    assert 'Waiting for the Nano to confirm completion' not in html
+    assert 'Waiting for the Mega to confirm completion' not in html
 
 
 def test_rounded_card_skips_unchanged_draw_and_repaints_accent():

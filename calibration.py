@@ -1,4 +1,4 @@
-"""Pi-side calibration. Nano firmware/EEPROM are never modified.
+"""Pi-side calibration. Mega firmware/EEPROM are never modified.
 
 All runtime state is protected by config.sensor_lock. Persistence is one JSON
 record so a failed save cannot leave half of a calibration installed.
@@ -184,18 +184,7 @@ def apply_packet(fields):
     anchor = _profile['ph']
     if pa is None:
         _ph_filtered = _ph_time = None
-    elif anchor:
-        # Same nominal response as Nano alpha=.20 per 2 seconds, but elapsed-time
-        # weighting prevents 500 ms retransmissions from speeding up the filter.
-        if _ph_time is None or now - _ph_time > config.QUALITY_MAX_PACKET_GAP_SECONDS:
-            _ph_filtered = pa
-        else:
-            alpha = 1 - math.pow(0.8, max(0, now - _ph_time) / 2.0)
-            _ph_filtered += alpha * (pa - _ph_filtered)
-        _ph_time = now
-    if anchor:
-        fields['pH'] = ('WAITING' if pa is None else
-                        f"{6.86 + (_ph_filtered - anchor['adc686']) * 2.32 / (anchor['adc918'] - anchor['adc686']):.2f}")
+    # The Mega reports the calibrated/filtered pH used by its local controller.
     if _profile['turbidity'] is not None:
         fields['Turbidity'] = 'WAITING'
         if ta is not None:

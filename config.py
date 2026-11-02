@@ -13,8 +13,9 @@ from datetime import timedelta
 # Settings
 # -------------------------
 
-PORT_1 = os.environ.get("FISHTANK_INPUT_PORT", "/dev/ttyUSB0")
-PORT_2 = os.environ.get("FISHTANK_OUTPUT_PORT", "/dev/ttyUSB1")
+# One physical Mega controller; its USB port serves both logical roles.
+MEGA_PORT = os.environ.get("FISHTANK_MEGA_PORT", "auto-mega")
+
 BAUD_RATE = 115200
 
 CAMERA_WIDTH = 960
@@ -202,7 +203,7 @@ def validate_feed_cycles(value):
     if cycles < 1:
         raise ValueError("Cycles must be a positive whole number")
     if cycles > MAX_FEED_CYCLES:
-        raise ValueError("Cycle count exceeds the Nano counter capacity (4,294,967,295)")
+        raise ValueError("Cycle count exceeds the Mega counter capacity (4,294,967,295)")
     return cycles
 
 
@@ -714,12 +715,12 @@ def build_camera_serial_message(command):
     }
     # Manual Feed Now = exactly one feeder cycle per click.
     feed_value = "ONE" if command == "feed" else "NO"
-    return f"NANOOUTPUT,CAMERA:{camera_map[command]},FEED:{feed_value}\n"
+    return f"MegaOutput,CAMERA:{camera_map[command]},FEED:{feed_value}\n"
 
 
 def build_scheduled_feed_serial_message():
     """Scheduled feeding keeps the original three-cycle serving."""
-    return "NANOOUTPUT,CAMERA:NO,FEED:SCHEDULED\n"
+    return "MegaOutput,CAMERA:NO,FEED:SCHEDULED\n"
 
 
 def build_pump_serial_message(command):
@@ -731,24 +732,16 @@ def build_pump_serial_message(command):
     }
     if command not in valid:
         raise ValueError("Invalid pump command")
-    return f"NANOOUTPUT,PUMP:{command}\n"
+    return f"MegaOutput,PUMP:{command}\n"
 
 
 def build_input_sensor_mode_message(mode):
     mode = str(mode or "").strip().upper()
     if mode not in {"NORMAL", "AUTO_QUALITY", "AUTO_EXTRACT", "FLOAT_ONLY"}:
         raise ValueError("Invalid input sensor mode")
-    return f"NANOINPUT,MODE:{mode}\n"
+    return f"MegaInput,MODE:{mode}\n"
 
 
-def build_cooler_temperature_message(temperature, threshold=None):
-    """Build the temperature update consumed by NANO_OUTPUT.ino."""
-    if threshold is None:
-        threshold = TEMP_OVERHEAT_LIMIT_C
-    return (
-        f"NANOOUTPUT,CAMERA:NO,FEED:NO,TEMP:{float(temperature):.2f},"
-        f"COOLERTHRESHOLD:{float(threshold):.2f}\n"
-    )
 
 
 def send_to_all_serial_ports(message):
@@ -756,13 +749,15 @@ def send_to_all_serial_ports(message):
     return _send_to_serial_targets(list(serial_ports), message)
 
 
-def register_output_serial_port(ser):
-    """Remember a port after it identifies itself as NANO_OUTPUT."""
+def register_mega_serial_port(ser):
+    """Atomically expose one verified Mega to both logical command APIs."""
     with serial_write_lock:
         if ser not in output_serial_ports:
             output_serial_ports.append(ser)
-        if ser in input_serial_ports:
-            input_serial_ports.remove(ser)
+        if ser not in input_serial_ports:
+            input_serial_ports.append(ser)
+
+
 
 
 def unregister_output_serial_port(ser):
@@ -771,13 +766,6 @@ def unregister_output_serial_port(ser):
             output_serial_ports.remove(ser)
 
 
-def register_input_serial_port(ser):
-    """Remember a port after it sends NANOINPUT sensor/status data."""
-    with serial_write_lock:
-        if ser not in input_serial_ports:
-            input_serial_ports.append(ser)
-        if ser in output_serial_ports:
-            output_serial_ports.remove(ser)
 
 
 def unregister_input_serial_port(ser):
@@ -787,9 +775,9 @@ def unregister_input_serial_port(ser):
 
 
 def send_to_output_serial_ports(message):
-    """Send commands to the identified output Nano, with startup fallback."""
+    """Send commands to the identified MegaOutput, after identity verification."""
     with serial_write_lock:
-        targets = list(output_serial_ports) or list(serial_ports)
+        targets = list(output_serial_ports)
     return _send_to_serial_targets(targets, message)
 
 
@@ -800,28 +788,28 @@ def send_to_identified_output_serial_ports(message):
 
 
 def send_to_input_serial_ports(message):
-    """Send sensor-mode commands only to the identified input Nano."""
+    """Send sensor-mode commands only to the identified MegaInput."""
     with serial_write_lock:
         targets = list(input_serial_ports)
     return _send_to_serial_targets(targets, message)
 
 
 def begin_shutdown():
-    """Atomically inhibit new commands and send final stops to both boards."""
+    """Atomically inhibit new commands and send final stops to the Mega controller."""
     global shutting_down
     with serial_write_lock:
         shutting_down = True
-        # Legacy stops also support a graceful shutdown during a firmware upgrade.
-        message = ("NANOOUTPUT,SYSTEM:OFF\nNANOOUTPUT,PUMP:STOP_ALL\n"
-                   "NANOOUTPUT,FEED:STOP\nNANOOUTPUT,FANMODE:OFF\n"
-                   "NANOINPUT,SYSTEM:OFF\n").encode("ascii")
+        # Both logical roles share one controller; send this stop sequence once per handle.
+        message = ("MegaOutput,SYSTEM:OFF\nMegaOutput,PUMP:STOP_ALL\n"
+                   "MegaOutput,FEED:STOP\nMegaOutput,FANMODE:OFF\n"
+                   "MegaInput,SYSTEM:OFF\n").encode("ascii")
         targets = list(dict.fromkeys(serial_ports + output_serial_ports + input_serial_ports))
         for ser in targets:
             try:
                 if ser and ser.is_open:
                     ser.write(message)
             except Exception as exc:
-                print(f"[SHUTDOWN] Stop write failed: {exc}; Nano watchdog will expire.")
+                print(f"[SHUTDOWN] Stop write failed: {exc}; Mega watchdog will expire.")
 
 
 def _send_to_serial_targets(targets, message):

@@ -3,11 +3,11 @@
 Microcontroller Communication Module.
 
 Handles:
-- Input Nano sensor data
-- Output Nano camera commands
+- MegaInput sensor data
+- MegaOutput camera commands
 - feeder commands
-- cooler temperature forwarding
-- Output Nano identification/status
+- Mega-local control status
+- MegaOutput identification/status
 """
 
 import serial
@@ -18,10 +18,11 @@ from typing import Optional, List, Callable
 import config
 import fan_control
 import calibration
+import mega_control
+from serial_discovery import MegaPortDiscovery
 
 from config import (
-    PORT_1,
-    PORT_2,
+    MEGA_PORT,
     BAUD_RATE,
     sensor_data,
     sensor_history,
@@ -31,10 +32,7 @@ from config import (
     set_db_value,
     send_to_output_serial_ports,
     build_camera_serial_message,
-    build_cooler_temperature_message,
-    register_output_serial_port,
     unregister_output_serial_port,
-    register_input_serial_port,
     unregister_input_serial_port,
 )
 
@@ -49,7 +47,7 @@ import feeding_control
 
 
 class MCUCommunicator:
-    """Handles serial communication with the input and output Nano boards."""
+    """Handles one Mega USB connection for MegaInput and MegaOutput."""
 
     def __init__(self, app_callback: Optional[Callable] = None):
         self.app_callback = app_callback
@@ -57,42 +55,12 @@ class MCUCommunicator:
         self.running = False
         self._lock = threading.Lock()
         self._off_ack = threading.Event()
+        self._discovery = MegaPortDiscovery()
+        self._seen_roles = set()
 
     # ------------------------------------------------------------------
     # Connection
     # ------------------------------------------------------------------
-
-    def connect_to_ports(
-        self,
-        port1: str = PORT_1,
-        port2: str = PORT_2,
-    ) -> List[serial.Serial]:
-        connections = []
-
-        for port in (port1, port2):
-            try:
-                ser = serial.Serial(
-                    port,
-                    BAUD_RATE,
-                    timeout=1,
-                    write_timeout=1,
-                )
-
-                connections.append(ser)
-                print(f"[SERIAL] Connected to {port}")
-
-            except serial.SerialException as exc:
-                print(
-                    f"[SERIAL] Could not open {port}: {exc}"
-                )
-
-        with self._lock:
-            self.serial_connections = connections
-
-            serial_ports.clear()
-            serial_ports.extend(connections)
-
-        return connections
 
     def disconnect_all(self):
         with self._lock:
@@ -126,7 +94,7 @@ class MCUCommunicator:
         position = get_servo_position()
 
         message = (
-            "NANOOUTPUT,"
+            "MegaOutput,"
             "CAMERA:SET,"
             f"TILT:{position['tilt']},"
             f"PAN:{position['pan']},"
@@ -165,33 +133,32 @@ class MCUCommunicator:
         )
 
     # ------------------------------------------------------------------
-    # Output Nano status
+    # MegaOutput status
     # ------------------------------------------------------------------
 
     def _parse_output_message(self, line):
         if "SYSTEM:OFF" in line:
             self._off_ack.set()
         if 'REASON:HOST_TIMEOUT' in line and not config.shutting_down:
-            print('[SYSTEM] Output Nano heartbeat timed out; system stopped. Restart the application to resume.')
-            config.begin_shutdown()
-            water_control.stop_all_for_shutdown()
-            feeding_control.disconnect()
+            print('[SERIAL] Output heartbeat expired; stopping pumps and reconnecting.')
+            self._pause_after_connection_loss()
+            raise serial.SerialException('MegaOutput HOST_TIMEOUT')
         fan_control.handle_status(line)
         feeding_control.handle_status(line)
         sensor_control.output_status(line)
         if "COOLER:ON" in line:
-            print("[COOLER] Output Nano reports cooler ON")
+            print("[COOLER] MegaOutput reports cooler ON")
         elif "COOLER:OFF" in line:
-            print("[COOLER] Output Nano reports cooler OFF")
+            print("[COOLER] MegaOutput reports cooler OFF")
 
         if "PUMP_EXTRACT:ON" in line:
-            print("[WATER] Output Nano reports extraction pump ON")
+            print("[WATER] MegaOutput reports extraction pump ON")
         if "PUMP_EXTRACT:OFF" in line:
-            print("[WATER] Output Nano reports extraction pump OFF")
+            print("[WATER] MegaOutput reports extraction pump OFF")
         if "PUMP_INSERT:ON" in line:
-            print("[WATER] Output Nano reports insertion pump ON")
+            print("[WATER] MegaOutput reports insertion pump ON")
         if "PUMP_INSERT:OFF" in line:
-            print("[WATER] Output Nano reports insertion pump OFF")
+            print("[WATER] MegaOutput reports insertion pump OFF")
 
     # ------------------------------------------------------------------
     # Servo status
@@ -216,7 +183,7 @@ class MCUCommunicator:
                 )
 
     # ------------------------------------------------------------------
-    # Input Nano sensor packet
+    # MegaInput sensor packet
     # ------------------------------------------------------------------
 
     def _parse_sensor_message(self, line):
@@ -247,18 +214,6 @@ class MCUCommunicator:
             snapshot = sensor_data.copy()
             history = {key: list(values) for key, values in sensor_history.items()}
             alerts = build_sensor_alerts(snapshot, history)
-            if water_control.get_sensor_policy()['temp']:
-                try:
-                    numeric_temp = float(snapshot['temp'])
-                except (TypeError, ValueError):
-                    numeric_temp = None
-                if numeric_temp is not None and -55.0 <= numeric_temp <= 125.0:
-                    send_to_output_serial_ports(build_cooler_temperature_message(numeric_temp, config.TEMP_OVERHEAT_LIMIT_C))
-                else:
-                    send_to_output_serial_ports('NANOOUTPUT,TEMP:INVALID\n')
-            elif sensor_control.enabled('temp'):
-                # Paused packets must not count toward a pending fan change.
-                send_to_output_serial_ports('NANOOUTPUT,TEMP:INVALID\n')
         if self.app_callback:
             try:
                 self.app_callback(snapshot['temp'], snapshot['float_stat'], snapshot['turbidity'], snapshot['ph'], alerts)
@@ -270,8 +225,52 @@ class MCUCommunicator:
     # Serial reader
     # ------------------------------------------------------------------
 
+    def _pause_after_connection_loss(self):
+        if config.shutting_down:
+            return
+        water_control.pause_for_connection_loss()
+        # Stop any feed still running on a surviving output connection. Never
+        # replay an uncertain job when the board returns.
+        feeding_control.disconnect()
+        config.send_to_identified_output_serial_ports('MegaOutput,FEED:STOP,JOB:0\n')
+        fan_control.stop_for_shutdown()
+
+    def _identify_mega(self, ser, reset=False):
+        first = ser not in config.output_serial_ports or ser not in config.input_serial_ports
+        if not first and not reset:
+            return False
+        if any(p is not ser for p in config.output_serial_ports + config.input_serial_ports):
+            raise serial.SerialException('Another controller is already connected')
+        recovered = 'mega' in self._seen_roles
+        self._seen_roles.add('mega')
+        if recovered:
+            self._pause_after_connection_loss()
+        unregister_output_serial_port(ser)
+        unregister_input_serial_port(ser)
+        commands = ['MegaOutput,SYSTEM:OFF\n'] if recovered else []
+        commands += ['MegaOutput,SYSTEM:ON\n', 'MegaOutput,PUMP:STOP_ALL\n']
+        if recovered:
+            commands.append('MegaOutput,FEED:STOP,JOB:0\n')
+        for command in commands:
+            if not self._send_serial_message(ser, command):
+                raise serial.SerialException('Could not initialize Mega')
+        # One physical handle serves both existing logical APIs. One reader only.
+        config.register_mega_serial_port(ser)
+        sensor_control.sync_output()
+        sensor_control.input_reconnected()
+        mega_control.reset()
+        mega_control.sync(force=True)
+        mode = 'MANUAL' if water_control.get_status()['manualOverride'] else 'AUTO'
+        self._send_serial_message(ser, f'MegaOutput,WATERMODE:{mode}\n')
+        if not recovered:
+            self.send_servo_restore_command(ser)
+        self._mega_armed_at = time.monotonic()
+        print('[SERIAL] Mega ' + ('reconnected; pumps remain stopped.' if recovered else 'identified (input + output).'))
+        return True
+
     def read_serial_data(self, port):
         ser = None
+        role = None
 
         try:
             ser = serial.Serial(
@@ -291,10 +290,12 @@ class MCUCommunicator:
                 f"[SERIAL] Connected to {port}"
             )
 
-            # Nano normally resets when the serial connection opens.
+            # Mega normally resets when the serial connection opens.
             time.sleep(2)
 
             last_heartbeat = 0.0
+            last_received = time.monotonic()
+            role = None
 
             while self.running:
                 try:
@@ -313,31 +314,30 @@ class MCUCommunicator:
                                 f"[{port}] {line}"
                             )
 
-                            # Identify which Nano owns this serial port.
-                            if line.startswith(("NANOOUTPUT", "NANOSERVO")):
-                                first_output_identification = ser not in config.output_serial_ports
-                                register_output_serial_port(ser)
-                                if first_output_identification or 'READY:1' in line:
-                                    self._send_serial_message(ser, 'NANOOUTPUT,SYSTEM:ON\n')
-                                    self.send_servo_restore_command(ser)
-                                    sensor_control.sync_output()
-                                    water_control.restore_pump_state_to_hardware()
-
-                            if line.startswith(("NANOINPUT,", "NANOINPUTSTATUS")):
-                                first_input_identification = ser not in config.input_serial_ports
-                                register_input_serial_port(ser)
-                                if first_input_identification or 'READY:1' in line:
-                                    self._send_serial_message(ser, 'NANOINPUT,SYSTEM:ON\n')
-                                    sensor_control.input_reconnected()
-                                    water_control.restore_sensor_mode_to_hardware()
-
-                            if line.startswith("NANOOUTPUT"):
+                            identity = line.startswith("AquaPiMega,") and ',PROTOCOL:1,' in line
+                            if role == "mega" or identity:
+                                last_received = time.monotonic()
+                            if identity:
+                                role = 'mega'
+                                initialized = self._identify_mega(ser, 'READY:1' in line)
+                                if initialized:
+                                    self._parse_output_message(line)
+                                elif ('SYSTEM:OFF' in line and not config.shutting_down
+                                      and time.monotonic() - self._mega_armed_at > 2):
+                                    raise serial.SerialException('Mega stopped; reconnecting safely')
+                            elif role != 'mega':
+                                if time.monotonic() - last_received > 8.0:
+                                    raise serial.SerialException('Expected current AquaPi Mega firmware')
+                                continue
+                            if line.startswith('AquaPiMega,'):
+                                mega_control.handle_status(line)
+                            if line.startswith("MegaOutput"):
                                 self._parse_output_message(line)
 
-                            if line.startswith("NANOSERVO"):
+                            if line.startswith("MegaServo"):
                                 self._parse_servo_message(line)
 
-                            if line.startswith("NANOINPUT,"):
+                            if line.startswith("MegaInput,"):
                                 self._parse_sensor_message(line)
 
                 except serial.SerialException:
@@ -352,12 +352,13 @@ class MCUCommunicator:
                 now = time.monotonic()
                 if now - last_heartbeat >= 1.0:
                     if ser in config.output_serial_ports:
-                        self._send_serial_message(ser, 'NANOOUTPUT,HEARTBEAT:1\n')
-                    elif ser in config.input_serial_ports:
-                        self._send_serial_message(ser, 'NANOINPUT,HEARTBEAT:1\n')
+                        self._send_serial_message(ser, 'MegaOutput,HEARTBEAT:1\n')
                     last_heartbeat = now
+                if not config.shutting_down and now - last_received > 8.0:
+                    raise serial.SerialException('No Mega messages for 8 seconds')
                 sensor_control.retry_pending_sync()
                 fan_control.retry_sync()
+                mega_control.sync()
                 time.sleep(0.02)
 
         except serial.SerialException as exc:
@@ -373,24 +374,24 @@ class MCUCommunicator:
 
         finally:
             if ser is not None:
+                identified = ser in config.output_serial_ports or ser in config.input_serial_ports
+                unregister_output_serial_port(ser)
+                unregister_input_serial_port(ser)
                 with self._lock:
                     if ser in self.serial_connections:
                         self.serial_connections.remove(ser)
-
                     if ser in serial_ports:
                         serial_ports.remove(ser)
-
-                if ser in config.output_serial_ports:
-                    feeding_control.disconnect()
-                    fan_control.disconnected()
-                unregister_output_serial_port(ser)
-                unregister_input_serial_port(ser)
-
+                # Always release the old descriptor before DB/UI recovery work.
                 try:
-                    if ser.is_open:
-                        ser.close()
+                    ser.close()
                 except Exception:
                     pass
+                if identified and self.running and not config.shutting_down:
+                    self._pause_after_connection_loss()
+                if role == 'mega':
+                    feeding_control.disconnect()
+                    fan_control.disconnected()
 
     # ------------------------------------------------------------------
     # Start / stop
@@ -398,12 +399,14 @@ class MCUCommunicator:
 
     def start_reading(
         self,
-        port1=PORT_1,
-        port2=PORT_2,
+        port=MEGA_PORT,
     ):
+        if self.running:
+            return
         self.running = True
 
-        for port in (port1, port2):
+        ports = [port]
+        for port in ports:
             thread = threading.Thread(
                 target=self._read_with_reconnect,
                 args=(port,),
@@ -413,7 +416,16 @@ class MCUCommunicator:
 
     def _read_with_reconnect(self, port):
         while self.running:
-            self.read_serial_data(port)
+            device = self._discovery.acquire(port)
+            if device is not None:
+                try:
+                    if device != port:
+                        print(f'[SERIAL] Rediscovered {port} at {device}')
+                    self.read_serial_data(device)
+                except Exception as exc:
+                    print(f'[SERIAL] Recovery error on {device}: {exc}; retrying.')
+                finally:
+                    self._discovery.release(port)
             if self.running:
                 time.sleep(2)
 

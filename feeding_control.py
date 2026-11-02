@@ -1,7 +1,7 @@
 """One feeder command path shared by Tk, Flask and the scheduler.
 
 A serial write is NOT proof of delivery. Jobs are recorded before sending,
-completed by Nano feedback, and never replayed after an uncertain result.
+completed by Mega feedback, and never replayed after an uncertain result.
 """
 import threading
 import time
@@ -55,7 +55,7 @@ def handle_status(line):
     with _lock:
         if fields.get('FEEDER') == 'V3':
             _record_status('unknown')
-            _active = None  # Nano reset boots with feeder closed; no command replay.
+            _active = None  # Mega reset boots with feeder closed; no command replay.
             _ready = True
         event = fields.get('FEED')
         if not event:
@@ -106,7 +106,7 @@ def request_feed(cycles=1, source='manual', schedule=None):
     with _lock:
         status = get_status()
         if not status['ready']:
-            raise ValueError('Feeder unavailable. Connect one output Nano with the updated firmware.')
+            raise ValueError('Feeder unavailable. Connect one MegaOutput with the updated firmware.')
         if status['busy']:
             raise ValueError('Feeder is busy or awaiting confirmation. Stop the feeder before another request.')
         if water_control.is_pump_active():
@@ -132,7 +132,7 @@ def request_feed(cycles=1, source='manual', schedule=None):
                 conn.execute("UPDATE feeding_schedules SET last_status='sent' WHERE id=? AND last_triggered_date=?",
                              (schedule['id'], schedule['lastTriggeredDate']))
         _last = dict(_active)
-        message = f"NANOOUTPUT,FEED:CUSTOM,CYCLES:{cycles},JOB:{_active['id']}\n"
+        message = f"MegaOutput,FEED:CUSTOM,CYCLES:{cycles},JOB:{_active['id']}\n"
         if not config.send_to_identified_output_serial_ports(message):
             _record_status('unknown')
             raise ValueError('Delivery uncertain. Inspect the feeder and press Stop; this request will not be repeated.')
@@ -142,9 +142,9 @@ def request_feed(cycles=1, source='manual', schedule=None):
 def stop_feeder():
     with _lock:
         if not config.output_serial_ports:
-            raise ValueError('Output Nano disconnected; feeder stop cannot be confirmed.')
+            raise ValueError('MegaOutput disconnected; feeder stop cannot be confirmed.')
         _record_status('stopping')
-        if not config.send_to_identified_output_serial_ports('NANOOUTPUT,FEED:STOP,JOB:0\n'):
+        if not config.send_to_identified_output_serial_ports('MegaOutput,FEED:STOP,JOB:0\n'):
             _record_status('unknown')
-            raise ValueError('Could not send stop. Check the output Nano connection.')
+            raise ValueError('Could not send stop. Check the MegaOutput connection.')
         return get_status()

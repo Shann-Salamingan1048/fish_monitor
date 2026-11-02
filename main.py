@@ -58,7 +58,7 @@ def main():
     calibration.initialize()
     sensor_control.initialize()
     stop_event = threading.Event()
-    # Binding before hardware startup also prevents two copies from using the Nanos.
+    # Binding before hardware startup also prevents two copies from using the Mega.
     server = make_server(config.WEB_HOST, config.WEB_PORT, flask_app, threaded=True)
     root = None
     communicator = get_communicator()
@@ -71,7 +71,7 @@ def main():
             communicator.app_callback = app.update_labels
         threading.Thread(target=server.serve_forever, daemon=True).start()
         threading.Thread(target=camera_watchdog, daemon=True).start()
-        communicator.start_reading(config.PORT_1, config.PORT_2)
+        communicator.start_reading(config.MEGA_PORT)
         worker = threading.Thread(target=feeding_schedule_worker, args=(stop_event,), daemon=True)
         worker.start()
         url = f'http://localhost:{config.WEB_PORT}'

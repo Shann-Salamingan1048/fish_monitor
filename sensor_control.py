@@ -86,7 +86,7 @@ def sync_input():
     with config.sensor_lock:
         _last_input_sync = time.monotonic()
         mask = sum(1 << i for i, key in enumerate(SENSORS) if _enabled[key])
-        return config.send_to_input_serial_ports(f'NANOINPUT,SENSORS:{mask},REV:{_revision}\n')
+        return config.send_to_input_serial_ports(f'MegaInput,SENSORS:{mask},REV:{_revision}\n')
 
 
 def sync_output():
@@ -95,7 +95,7 @@ def sync_output():
         _last_output_sync = time.monotonic()
         _cooler_confirmed = None
         state = 'ON' if _enabled['temp'] else 'OFF'
-        return config.send_to_identified_output_serial_ports(f'NANOOUTPUT,TEMPSENSOR:{state}\n')
+        return config.send_to_identified_output_serial_ports(f'MegaOutput,TEMPSENSOR:{state}\n')
 
 
 def retry_pending_sync():

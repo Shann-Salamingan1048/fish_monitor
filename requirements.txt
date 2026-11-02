@@ -27,17 +27,16 @@
 # 3. USB SERIAL PERMISSIONS - only if your user lacks device access:
 #   sudo usermod -aG dialout "$USER"
 # Log out and back in after changing groups. Close Arduino Serial Monitor before
-# running AquaPi so it does not compete for the same Nano serial port.
+# running AquaPi so it does not compete for the same Mega serial port.
 #
-# 4. ARDUINO IDE - install separately on the computer used to flash the Nanos:
-# Board Manager: Arduino AVR Boards; select Arduino Nano, matching processor
-# (ATmega328P or Old Bootloader as appropriate), and the correct serial port.
-# Library Manager, INPUT Nano: OneWire; DallasTemperature.
-# Library Manager, OUTPUT Nano: Adafruit PWM Servo Driver Library; accept its
-# dependencies, including Adafruit BusIO. Wire and AVR/C headers come with the core.
-# INPUT: arduino/Nano_INPUT_Millis/Nano_INPUT_Millis.ino
-# OUTPUT: arduino/NANO_OUTPUT/NANO_OUTPUT.ino
-# Both sketches use 115200 baud. No Arduino libraries belong in pip requirements.
+# 4. ARDUINO IDE - one Mega 2560 (see MEGA_SETUP.md):
+# Board Manager: Arduino AVR Boards; select Arduino Mega or Mega 2560,
+# processor ATmega2560, then the correct USB port.
+# Library Manager: OneWire; DallasTemperature; Adafruit PWM Servo Driver Library;
+# accept Adafruit BusIO dependency. Wire and AVR/C headers come with the core.
+# Open arduino/AquaPi_Mega/AquaPi_Mega.ino; it contains the complete firmware.
+# One board, one sketch, one upload; USB baud is 115200.
+# No Arduino libraries belong in pip requirements.
 #
 # 5. OPTIONAL CLOUDFLARE TUNNEL - install on the machine hosting AquaPi:
 #   sudo mkdir -p --mode=0755 /usr/share/keyrings

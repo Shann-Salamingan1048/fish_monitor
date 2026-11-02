@@ -9,9 +9,9 @@ inline int selectedAnalogReference = -1;
 inline void analogReference(int mode) { selectedAnalogReference = mode; }
 #define A0 14
 #define A1 15
-inline int pinInputs[20] = {};
-inline int digitalReads[20] = {};
-inline int analogReads[20] = {};
+inline int pinInputs[80] = {};
+inline int digitalReads[80] = {};
+inline int analogReads[80] = {};
 inline int analogRead(int pin) { ++analogReads[pin]; return pinInputs[pin]; }
 inline int digitalRead(int pin) { ++digitalReads[pin]; return pinInputs[pin]; }
 class String : public std::string {
