@@ -1,4 +1,4 @@
-"""Pi-side calibration. Mega firmware/EEPROM are never modified.
+"""Calibration stored on the Pi; ADC rules synchronized to Mega RAM.
 
 All runtime state is protected by config.sensor_lock. Persistence is one JSON
 record so a failed save cannot leave half of a calibration installed.
@@ -18,6 +18,7 @@ DEFAULT_RANGES = [
     {'min': 955, 'max': 1023, 'label': 'Very Clear', 'category': 'Very Clear'},
 ]
 _profile = {'ph': None, 'turbidity': None}
+_compiled_ranges = copy.deepcopy(DEFAULT_RANGES)
 _maintenance = False
 _ph_filtered = None
 _ph_time = None
@@ -33,7 +34,8 @@ def _number(value, name, lo=0, hi=1023):
 
 
 def validate(payload):
-    if not isinstance(payload, dict) or set(payload) != {'ph', 'turbidity'}:
+    if (not isinstance(payload, dict) or not {'ph', 'turbidity'} <= set(payload)
+            or set(payload) - {'ph', 'turbidity', 'turbidityUnit', 'turbidityPoints'}):
         raise ValueError('Provide pH and turbidity settings.')
     ph = payload['ph']
     if ph is not None:
@@ -44,6 +46,27 @@ def validate(payload):
         if a - b < 20:
             raise ValueError('6.86 ADC must exceed 9.18 ADC by at least 20 counts. Check the buffers and readings.')
         ph = {'adc686': a, 'adc918': b}
+    unit = payload.get('turbidityUnit', 'ADC')
+    if unit not in ('ADC', 'NTU'):
+        raise ValueError('Choose ADC or NTU for turbidity ranges.')
+    points = payload.get('turbidityPoints')
+    if points is not None:
+        if not isinstance(points, list) or not 2 <= len(points) <= 8:
+            raise ValueError('Use 2 to 8 known-NTU reference points.')
+        checked = []
+        for point in points:
+            if not isinstance(point, dict) or set(point) != {'adc', 'ntu'}:
+                raise ValueError('Each NTU reference needs an ADC reading and known NTU value.')
+            checked.append(dict(adc=_number(point['adc'], 'Reference ADC'),
+                                ntu=_number(point['ntu'], 'Reference NTU', 0, 1000)))
+        points = sorted(checked, key=lambda point: point['ntu'])
+        for left, right in zip(points, points[1:]):
+            if right['ntu'] <= left['ntu'] or left['adc'] - right['adc'] < 1:
+                raise ValueError('NTU must increase as ADC decreases, with at least 1 ADC count between references.')
+        if points[0]['adc'] - points[-1]['adc'] < 20:
+            raise ValueError('Reference points must span at least 20 ADC counts.')
+    if unit == 'NTU' and (points is None or payload['turbidity'] is None):
+        raise ValueError('NTU mode requires reference calibration and custom clarity ranges.')
     rows = payload['turbidity']
     if rows is not None:
         if not isinstance(rows, list) or not 1 <= len(rows) <= 20:
@@ -52,11 +75,14 @@ def validate(payload):
         reserved = {'waiting', 'paused', 'disabled', 'error', '--', 'unknown', 'nan'}
         for row in rows:
             if not isinstance(row, dict) or set(row) != {'min', 'max', 'label', 'category'}:
-                raise ValueError('Each range needs minimum ADC, maximum ADC, display name and category.')
-            low = _number(row['min'], 'Minimum ADC')
-            high = _number(row['max'], 'Maximum ADC')
-            if int(low) != low or int(high) != high or low > high:
+                raise ValueError('Each range needs minimum, maximum, display name and category.')
+            limit = 1023 if unit == 'ADC' else 1000
+            low = _number(row['min'], f'Minimum {unit}', 0, limit)
+            high = _number(row['max'], f'Maximum {unit}', 0, limit)
+            if unit == 'ADC' and (int(low) != low or int(high) != high or low > high):
                 raise ValueError('ADC ranges must use whole numbers with minimum ≤ maximum.')
+            if unit == 'NTU' and low >= high:
+                raise ValueError('NTU minimum must be less than maximum.')
             label = row['label']
             if not isinstance(label, str) or not 1 <= len(label.strip()) <= 32 or any(ord(c) < 32 for c in label):
                 raise ValueError('Display names must contain 1 to 32 printable characters.')
@@ -66,16 +92,65 @@ def validate(payload):
             labels.add(label.casefold())
             if row['category'] not in CATEGORIES:
                 raise ValueError('Choose a standard clarity category for each range.')
-            result.append(dict(min=int(low), max=int(high), label=label, category=row['category']))
+            result.append(dict(min=int(low) if unit == 'ADC' else low,
+                               max=int(high) if unit == 'ADC' else high,
+                               label=label, category=row['category']))
         rows = sorted(result, key=lambda row: row['min'])
-        next_adc = 0
+        next_value = 0
         for row in rows:
-            if row['min'] != next_adc:
-                raise ValueError('Ranges must cover every ADC count from 0 to 1023, without gaps or overlaps.')
-            next_adc = row['max'] + 1
-        if next_adc != 1024:
-            raise ValueError('Ranges must end at ADC 1023.')
-    return {'ph': ph, 'turbidity': rows}
+            if row['min'] != next_value:
+                raise ValueError('Ranges must cover the full scale without gaps or overlaps. '
+                                 + ('ADC: 0–1023 inclusive.' if unit == 'ADC' else
+                                    'NTU: 0–1000; each maximum equals the next minimum.'))
+            next_value = row['max'] + (1 if unit == 'ADC' else 0)
+        if next_value != (1024 if unit == 'ADC' else 1000):
+            raise ValueError('Ranges must end at ' + ('ADC 1023.' if unit == 'ADC' else 'NTU 1000.'))
+    result = {'ph': ph, 'turbidity': rows}
+    # Preserve old saved profiles and older clients without a migration.
+    if 'turbidityUnit' in payload or 'turbidityPoints' in payload:
+        result.update(turbidityUnit=unit, turbidityPoints=points)
+    compile_adc_ranges(result)
+    return result
+
+
+def estimate_ntu(adc, points):
+    """Piecewise linear interpolation only inside the measured reference span."""
+    if adc is None or not points or not points[-1]['adc'] <= adc <= points[0]['adc']:
+        return None
+    for left, right in zip(points, points[1:]):
+        if right['adc'] <= adc <= left['adc']:
+            fraction = (left['adc'] - adc) / (left['adc'] - right['adc'])
+            return left['ntu'] + fraction * (right['ntu'] - left['ntu'])
+    return None
+
+
+def compile_adc_ranges(profile):
+    """Compile once on save/load; host labels and Mega rules share exact bins."""
+    rows = profile['turbidity'] or DEFAULT_RANGES
+    if profile.get('turbidityUnit', 'ADC') == 'ADC':
+        return copy.deepcopy(rows)
+    points, compiled = profile['turbidityPoints'], []
+    for adc in range(1024):
+        value = estimate_ntu(adc, points)
+        # No invented NTU measurement outside references. For protection only,
+        # use the extreme clarity row on that side of the calibration span.
+        if value is None:
+            row = rows[-1] if adc < points[-1]['adc'] else rows[0]
+        else:
+            row = next(row for row in rows if row['min'] <= value < row['max']
+                       or value == 1000 == row['max'])
+        if compiled and all(compiled[-1][key] == row[key] for key in ('label', 'category')):
+            compiled[-1]['max'] = adc
+        else:
+            compiled.append(dict(min=adc, max=adc, label=row['label'], category=row['category']))
+    if len(compiled) > 20:
+        raise ValueError('NTU ranges generate too many Mega ranges (maximum 20).')
+    return compiled
+
+
+def effective_adc_ranges():
+    with config.sensor_lock:
+        return copy.deepcopy(_compiled_ranges)
 
 
 def reset_readings():
@@ -86,10 +161,11 @@ def reset_readings():
 
 
 def initialize():
-    global _profile, _maintenance
+    global _profile, _maintenance, _compiled_ranges
     with config.sensor_lock:
         # Invalid stored calibration is an error, never silently reinterpret water.
         _profile = validate(json.loads(config.get_db_value('sensor_calibration', '{"ph":null,"turbidity":null}')))
+        _compiled_ranges = compile_adc_ranges(_profile)
         _maintenance = config.get_db_value('calibration_active', '0') == '1'
         reset_readings()
 
@@ -131,13 +207,15 @@ def set_active(enabled):
 
 
 def save(payload):
-    global _profile
+    global _profile, _compiled_ranges
     proposed = validate(payload)
+    compiled = compile_adc_ranges(proposed)
     with config.sensor_lock:
         if not _maintenance:
             raise ValueError('Start calibration before saving changes.')
         _persist('sensor_calibration', json.dumps(proposed, allow_nan=False))
         _profile = proposed
+        _compiled_ranges = compiled
         reset_readings()
         _clear_history()
         import water_control
@@ -188,7 +266,7 @@ def apply_packet(fields):
     if _profile['turbidity'] is not None:
         fields['Turbidity'] = 'WAITING'
         if ta is not None:
-            fields['Turbidity'] = next(row['label'] for row in _profile['turbidity'] if row['min'] <= ta <= row['max'])
+            fields['Turbidity'] = next(row['label'] for row in _compiled_ranges if row['min'] <= ta <= row['max'])
     # Never turn disabled acquisition into a valid reading.
     for key, field in (('ph', 'pH'), ('turbidity', 'Turbidity')):
         if not sensor_control.enabled(key):
@@ -201,8 +279,14 @@ def status():
     with config.sensor_lock:
         age = None if _live['receivedAt'] is None else max(0, time.monotonic() - _live['receivedAt'])
         fresh = age is not None and age <= config.QUALITY_MAX_PACKET_GAP_SECONDS
+        adc = _live['turbidityADC'] if fresh else None
+        points = _profile.get('turbidityPoints')
+        ntu = estimate_ntu(adc, points)
+        ntu_state = ('unavailable' if adc is None else 'not_calibrated' if not points
+                     else 'out_of_range' if ntu is None else 'calibrated')
         return dict(profile=copy.deepcopy(_profile), defaults=copy.deepcopy(DEFAULT_RANGES),
                     categories=list(CATEGORIES), active=_maintenance,
                     live={'phADC': _live['phADC'] if fresh else None,
-                          'turbidityADC': _live['turbidityADC'] if fresh else None,
+                          'turbidityADC': adc, 'turbidityNTU': ntu,
+                          'turbidityNTUState': ntu_state,
                           'ageSeconds': age, 'fresh': fresh})

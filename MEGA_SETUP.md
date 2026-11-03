@@ -101,7 +101,7 @@ The protocol now consistently uses `MegaInput`, `MegaInputStatus`, `MegaOutput`,
 
 **Recheck/recalibrate pH and turbidity after moving to the Mega.** Old ADC values may shift with the board's ADC reference and power supply. Use your real pH **6.86 and 9.18** buffers in the existing Developer option page. Do not reuse example ADC values as actual measurements.
 
-The firmware's two ADC constants remain zero until you enter measured constants yourself or the Pi sends a saved web calibration. Zero constants deliberately mean uncalibrated, not pH zero. Web calibration is copied into RAM; the Mega then applies the pH formula locally. The web uses that reported pH instead of independently filtering it a second time. Custom turbidity labels remain in the web, while their ADC ranges and underlying clarity categories are synchronized to the Mega.
+The firmware's two ADC constants remain zero until you enter measured constants yourself or the Pi sends a saved web calibration. Zero constants deliberately mean uncalibrated, not pH zero. Web calibration is copied into RAM; the Mega then applies the pH formula locally. The web uses that reported pH instead of independently filtering it a second time. Custom turbidity labels remain in the web. Developer option accepts ADC or NTU clarity ranges and shows both readings. NTU references and ranges are converted on the Pi into matching ADC ranges and clarity categories for the Mega; no firmware re-upload is required. See `TURBIDITY_NTU.md`.
 
 The current critical-only policy is preserved:
 
@@ -136,3 +136,7 @@ Verified with an actual `arduino:avr:mega:cpu=atmega2560` build using Arduino AV
 See `VALIDATION.md` for the current test results. Three C++ simulations test combined operation and local protection, including no Pi pump/temperature commands during automatic decisions, both pumps, float priority, confirmation, pH settling, outlier rejection, disabled sensors, calibration mode, packet boundaries, UART backpressure, heartbeat expiry, manual stops and System Off. Physical pump wiring and USB-noise behavior were not tested here.
 
 Before restoring actuator power, verify each sensor/float display and each output's off state. Then test one actuator at a time, System Off, and USB reconnection. Finally test both pumps while watching the Pi's USB log. If USB still drops, the underlying hardware issue remains; automatic reconnection cannot repair it.
+
+## Water-change schedule firmware
+
+This release adds `WATERCHANGE:V1` with bounded local drain/refill phases. Upload the single combined sketch once to enable scheduled water changes from GUI or web. Pin assignments are unchanged. On completion automatic control resumes; stops and faults pause automation. See `WATER_CHANGE_SCHEDULE.md`.

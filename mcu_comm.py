@@ -232,6 +232,8 @@ class MCUCommunicator:
         # Stop any feed still running on a surviving output connection. Never
         # replay an uncertain job when the board returns.
         feeding_control.disconnect()
+        import water_schedule
+        water_schedule.disconnect()
         config.send_to_identified_output_serial_ports('MegaOutput,FEED:STOP,JOB:0\n')
         fan_control.stop_for_shutdown()
 
@@ -391,6 +393,8 @@ class MCUCommunicator:
                     self._pause_after_connection_loss()
                 if role == 'mega':
                     feeding_control.disconnect()
+                    import water_schedule
+                    water_schedule.disconnect()
                     fan_control.disconnected()
 
     # ------------------------------------------------------------------

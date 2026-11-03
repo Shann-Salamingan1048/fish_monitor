@@ -9,7 +9,7 @@ import sqlite3
 import config
 import water_control
 
-_lock = threading.RLock()
+_lock = config.sensor_lock  # Serialize feeder and scheduled pump admission.
 _ready = False
 _active = None
 _last = None

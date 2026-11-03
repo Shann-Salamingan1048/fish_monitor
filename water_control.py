@@ -242,9 +242,10 @@ def get_status():
 
 
 def is_pump_active():
+    import water_schedule
     with _lock:
         return bool(
-            _state["extractionOn"]
+            water_schedule.busy() or _state["extractionOn"]
             or _state["insertionOn"]
         )
 
@@ -398,7 +399,8 @@ def manual_action(action):
 def accept_mega_status(fields):
     """Display hardware decisions without sending them back as manual commands."""
     allowed = {'idle','manual_idle','manual_extract','manual_insert','manual_both',
-               'auto_extract_ph','auto_extract_turbidity','auto_extract_overflow','auto_insert'}
+               'auto_extract_ph','auto_extract_turbidity','auto_extract_overflow','auto_insert',
+               'scheduled_drain','scheduled_refill'}
     mode = fields.get('WATER')
     if mode not in allowed or fields.get('MODE') not in {'NORMAL','AUTO_QUALITY','FLOAT_ONLY'}:
         return

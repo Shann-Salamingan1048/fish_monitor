@@ -1,0 +1,20 @@
+<section id="water-schedule" class="card settings-form">
+  <h2>Water-change schedule</h2>
+  <p class="control-note">Timed drain, then refill to Normal. For routine water maintenance; ammonia is not measured.</p>
+  <p id="water-schedule-next" role="status"></p>
+  <p id="water-change-state" role="status"></p>
+  <form id="water-schedule-form" hidden>
+    <div class="field-pair">
+      <label>Day<select id="water-day">{% for day in range(8) %}<option value="{{ day }}">{{ ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday','Every day (Monday–Sunday)'][day] }}</option>{% endfor %}</select></label>
+      <label>Time<input id="water-time" type="time" required></label>
+      <label>Drain duration (seconds)<input id="water-drain" type="number" min="1" max="600" step="1" required></label>
+      <label>Refill timeout (seconds)<input id="water-refill" type="number" min="1" max="1800" step="1" required></label>
+    </div>
+    <p class="control-note">Choose durations after testing your pumps. Draining stops early at the Low float; refill stops at Normal. Busy, paused or missed runs are skipped.</p>
+    <div class="calibration-actions"><button type="submit" id="water-save" class="mode-btn">Add schedule</button><button type="button" id="water-cancel" class="mode-btn" hidden>Cancel edit</button></div>
+  </form>
+  <div id="water-schedule-list" class="feeding-schedule-list"></div>
+  <button type="button" id="water-change-stop" class="mode-btn danger" hidden>Stop water change</button>
+  <p class="control-note">A stop or fault pauses automatic water control. Check the tank before choosing Resume automatic control.</p>
+  <p id="water-schedule-message" role="status" aria-live="polite"></p>
+</section>

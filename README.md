@@ -30,3 +30,11 @@ python main.py --headless
 The local website is available at `http://127.0.0.1:5000`. Existing Cloudflare tunnel configuration continues to point to that service. Close Arduino Serial Monitor while AquaPi owns the USB port.
 
 One Mega does not guarantee a cure for pump-induced USB disconnections. Electrical interference or supply/ground disturbances still need hardware diagnosis if they persist.
+
+## Turbidity Developer option
+
+View live ADC and calibrated NTU together. Choose ADC or NTU clarity ranges, add known-NTU reference points, and save without re-uploading the Mega. Existing ADC calibration remains compatible. See `TURBIDITY_NTU.md` for the steps and distinction between web NTU and the separate serial diagnostic.
+
+## Scheduled water changes
+
+Create weekly or everyday drain/refill schedules in Web → Controls → Water-change schedule, or GUI → Controls & settings → Water pumps → Water-change schedule. Both use the same database. This feature requires the updated combined Mega sketch. See `WATER_CHANGE_SCHEDULE.md` for setup, durations, float protection and skipped-run behavior.

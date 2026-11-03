@@ -45,6 +45,8 @@ def isolated(tmp_path, monkeypatch):
     config.load_persisted_settings()
     calibration.initialize()
     sensor_control.initialize()
+    import water_schedule
+    water_schedule.initialize()
     feeder.initialize()
     config.output_serial_ports.clear()
     config.input_serial_ports.clear()

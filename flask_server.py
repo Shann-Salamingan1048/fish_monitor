@@ -755,3 +755,50 @@ def feeder_api():
         return jsonify(ok=True, feeder=result)
     except ValueError as exc:
         return jsonify(ok=False, error=str(exc)), 409
+
+
+def require_water_schedule_admin():
+    error = require_admin_json()
+    if error: return error
+    if (request.headers.get('Sec-Fetch-Site') == 'cross-site' or
+            request.headers.get('Origin') and urlsplit(request.headers['Origin']).netloc != request.host):
+        return jsonify(ok=False, error='Use the AquaPi water schedule page.'), 403
+    return None
+
+
+@flask_app.route('/api/water-schedules', methods=['GET', 'POST'])
+def water_schedules_api():
+    import water_schedule
+    if request.method == 'GET':
+        return jsonify(water_schedule.response())
+    error = require_water_schedule_admin()
+    if error: return error
+    try:
+        water_schedule.save(request.get_json(silent=True))
+        return jsonify(water_schedule.response())
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+
+
+@flask_app.route('/api/water-schedules/<int:schedule_id>', methods=['PUT', 'DELETE'])
+def water_schedule_item(schedule_id):
+    import water_schedule
+    error = require_water_schedule_admin()
+    if error: return error
+    if not any(s['id'] == schedule_id for s in water_schedule.schedules()):
+        return jsonify(ok=False, error='Water schedule not found'), 404
+    try:
+        if request.method == 'DELETE': water_schedule.delete(schedule_id)
+        else: water_schedule.save(request.get_json(silent=True), schedule_id)
+        return jsonify(water_schedule.response())
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+
+
+@flask_app.route('/api/water-change/stop', methods=['POST'])
+def stop_scheduled_water_change():
+    import water_schedule
+    error = require_water_schedule_admin()
+    if error: return error
+    try: return jsonify(water_schedule.stop())
+    except ValueError as exc: return jsonify(ok=False, error=str(exc)), 409

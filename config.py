@@ -193,6 +193,8 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT, cycles INTEGER NOT NULL,
             source TEXT NOT NULL, schedule_id INTEGER, trigger_date TEXT,
             status TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL)""")
+        import water_schedule
+        water_schedule.create_tables(conn)
         conn.commit()
 
 

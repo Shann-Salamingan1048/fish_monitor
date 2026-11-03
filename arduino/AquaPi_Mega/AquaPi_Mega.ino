@@ -1316,6 +1316,15 @@ bool settling = true, settlingClock = false;
 uint32_t settlingSince = 0;
 const char *mode = "manual_idle";
 uint32_t lastReport = 0;
+// Bounded scheduled water change. No delay(), heap allocation or EEPROM writes.
+uint8_t wcPhase = 0; // 0 idle, 1 drain, 2 refill.
+uint32_t wcJob = 0, wcSince = 0, wcDrainMs = 0, wcRefillMs = 0;
+const char *wcStatus = "IDLE", *wcReason = "NONE";
+void waterChangeReport() {
+  link.print(F("AquaPiMega,WC:")); link.print(wcStatus);
+  link.print(F(",WCJOB:")); link.print(wcJob);
+  link.print(F(",WCREASON:")); link.println(wcReason);
+}
 
 bool number(const char *message, const char *key, float &value, float low, float high) {
   char text[28], *end;
@@ -1366,10 +1375,19 @@ void change(bool extract, bool insert, const char *next, uint32_t now) {
   if (extract || insert) { settling = true; settlingClock = false; }
   if (changed) report(now);
 }
+void waterChangeFinish(const char *status, const char *reason, bool resume) {
+  wcPhase = 0; wcStatus = status; wcReason = reason;
+  autoMode = resume; resetQuality(); levelCorrection = 0;
+  settling = true; settlingClock = false;
+  change(false,false,resume ? "idle":"manual_idle",millis());
+  waterChangeReport();
+}
 void manual() {
+  if (wcPhase) waterChangeFinish("CANCELLED","OPERATOR",false);
   autoMode = false; resetQuality(); levelCorrection = 0;
 }
 void stopped() {
+  if (wcPhase) waterChangeFinish("CANCELLED","SYSTEM_OFF",false);
   manual(); settling = true; settlingClock = false;
   change(false,false,"manual_idle",millis());
 }
@@ -1378,6 +1396,7 @@ void configure(const char *message) {
   uint32_t revision, n;
   if (integer(message,"BEGIN:",revision)) {
     if (configured && revision == active.revision) { ack(revision); return; }
+    if (wcPhase) waterChangeFinish("CANCELLED","SETTINGS_CHANGED",false);
     staging = false; configured = false; receivedRows = 0; resetQuality();
     if (autoMode) change(false,false,"idle",millis());
     Settings next{}; next.revision = revision;
@@ -1431,8 +1450,62 @@ uint8_t clarity() {
       return active.ranges[i].category;
   return 255;
 }
+bool waterChangeFloatsValid() {
+  return MegaInput::floatsReady && MegaInput::sensorEnabled(MegaInput::LOW_BIT) &&
+    MegaInput::sensorEnabled(MegaInput::NORMAL_BIT) && MegaInput::sensorEnabled(MegaInput::UPPER_BIT) &&
+    !(MegaInput::upperTriggered && !MegaInput::normalTriggered) &&
+    !(MegaInput::normalTriggered && !MegaInput::lowTriggered);
+}
+void waterChangeCommand(const char *message, const char *action) {
+  if (!strcmp(action,"STOP")) {
+    if (wcPhase) waterChangeFinish("CANCELLED","OPERATOR",false);
+    else { manual(); change(false,false,"manual_idle",millis()); waterChangeReport(); }
+    return;
+  }
+  if (strcmp(action,"START")) return;
+  uint32_t job, drain, refill;
+  if (!integer(message,"JOB:",job) || !job) return;
+  if (job == wcJob) { waterChangeReport(); return; } // Never replay a duplicate job.
+  if (wcPhase) {
+    link.print(F("AquaPiMega,WC:REJECTED,WCJOB:")); link.print(job);
+    link.println(F(",WCREASON:BUSY")); return;
+  }
+  wcJob=job;
+  if (!integer(message,"DRAIN:",drain,600) || !drain ||
+      !integer(message,"REFILL:",refill,1800) || !refill ||
+      !MegaOutput::systemEnabled || !autoMode || !configured || active.maintenance ||
+      MegaOutput::feederState != MegaOutput::FeederState::IDLE ||
+      MegaOutput::extractionPumpOn || MegaOutput::insertionPumpOn ||
+      !waterChangeFloatsValid() || !MegaInput::normalTriggered || MegaInput::upperTriggered) {
+    wcStatus="REJECTED"; wcReason="NOT_READY"; waterChangeReport(); return;
+  }
+  resetQuality(); levelCorrection=0;
+  wcDrainMs=drain*1000UL; wcRefillMs=refill*1000UL; wcSince=millis();
+  wcPhase=1; wcStatus="DRAINING"; wcReason="SCHEDULE";
+  change(true,false,"scheduled_drain",wcSince);
+  // change() resets acquisition on mode transitions; refresh floats immediately.
+  MegaInput::readWaterFloat();
+  waterChangeReport();
+}
+void serviceWaterChange(uint32_t now) {
+  if (!configured || active.maintenance || !waterChangeFloatsValid()) {
+    waterChangeFinish("FAILED","FLOATS_OR_CONFIG",false); return;
+  }
+  if (MegaInput::upperTriggered) {
+    waterChangeFinish("FAILED","UPPER_FLOAT",false); return;
+  }
+  if (wcPhase==1 && (!MegaInput::lowTriggered || uint32_t(now-wcSince)>=wcDrainMs)) {
+    wcPhase=2; wcSince=now; wcStatus="REFILLING";
+    change(false,true,"scheduled_refill",now); waterChangeReport();
+  }
+  if (wcPhase==2) {
+    if (MegaInput::normalTriggered) waterChangeFinish("COMPLETE","NORMAL_LEVEL",true);
+    else if (uint32_t(now-wcSince)>=wcRefillMs) waterChangeFinish("FAILED","REFILL_TIMEOUT",false);
+  }
+}
 void service(uint32_t now) {
   if (!MegaOutput::systemEnabled) return;
+  if (wcPhase) { serviceWaterChange(now); return; }
   if (!autoMode) {
     change(MegaOutput::extractionPumpOn,MegaOutput::insertionPumpOn,
       MegaOutput::extractionPumpOn ? (MegaOutput::insertionPumpOn ? "manual_both":"manual_extract") :
@@ -1506,7 +1579,7 @@ void stopEverything() {
 }
 void identity(bool boot) {
   link.print(boot ? F("AquaPiMega,READY:1") : F("AquaPiMega,STATUS:1"));
-  link.print(F(",PROTOCOL:1,FEEDER:V3,FANCTRL:V1,SYSTEMCTRL:V1,SYSTEM:"));
+  link.print(F(",PROTOCOL:1,FEEDER:V3,FANCTRL:V1,WATERCHANGE:V1,SYSTEMCTRL:V1,SYSTEM:"));
   link.print(MegaOutput::systemEnabled ? F("ON") : F("OFF"));
   link.print(F(",TXDROP:")); link.println(link.dropped);
 }
@@ -1539,13 +1612,18 @@ void dispatch(char *message) {
     }
     return;
   }
+  if (MegaOutput::copyFieldValue(message,"WATERCHANGE:",value,sizeof(value))) {
+    Policy::waterChangeCommand(message,value); return;
+  }
   if (MegaOutput::copyFieldValue(message,"WATERMODE:",value,sizeof(value))) {
+    if (Policy::wcPhase) Policy::waterChangeFinish("CANCELLED","OPERATOR",false);
     if (!strcmp(value,"AUTO")) { Policy::resetQuality(); Policy::autoMode=true; Policy::levelCorrection=0; }
     else if (!strcmp(value,"MANUAL")) Policy::manual();
     Policy::report(millis()); return;
   }
   if (MegaOutput::copyFieldValue(message,"PUMP:",value,sizeof(value))) Policy::manual();
   if (!strncmp(message,"MEGAINPUT,SENSORS:",17)) {
+    if (Policy::wcPhase) Policy::waterChangeFinish("CANCELLED","SENSORS_CHANGED",false);
     Policy::resetQuality(); Policy::levelCorrection=0;
   }
   // The Mega owns acquisition modes while automatic control is selected.
@@ -1610,7 +1688,7 @@ void tick() {
     MegaOutput::sendCoolerStatus(F("STATUS"));
   }
   if (uint32_t(now-lastIdentityAt) >= 2000) {
-    lastIdentityAt = now; identity(false); Policy::report(now);
+    lastIdentityAt = now; identity(false); Policy::report(now); Policy::waterChangeReport();
   }
   link.drain();
 }

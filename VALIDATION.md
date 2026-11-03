@@ -1,35 +1,27 @@
-# Mega-only release validation
+# Water-change scheduling release validation
 
-## Scope
+## Current update
 
-One Mega controller, one USB reader and one complete Arduino sketch. The serial protocol consistently uses `MegaInput`, `MegaInputStatus`, `MegaOutput`, `MegaServo`, `MegaConfig` and `AquaPiMega`. The old alternative controller mode and separate sketch targets have been removed.
+- 223 Python tests passed (including schedule CRUD, weekday/everyday selection, atomic claims, start guards, missed-run handling, no replay, feed conflicts, deadline stopping, access control, cross-site write rejection, and GUI use of the shared service).
+- Water schedule JavaScript syntax and jsdom interaction checks passed: viewer/Admin controls, adding/editing, draft preservation during polling, pause/enable, deletion and Stop.
+- Four C++ simulations passed using the actual combined `.ino`. The new simulation covers drain timing and Low cutoff, refill to Normal, refill timeout, Upper/contradictory floats, disabled sensors, manual cancellation, System Off, heartbeat expiry, duplicate jobs, feeding/calibration conflicts, timer rollover and serial backpressure.
+- Actual Mega AVR compilation passed. Final build: 33,002 bytes flash (12%), 3,780 bytes static RAM (46%), 4,412 bytes remaining for stack/heap. This is not a measured worst-case stack watermark.
+- Existing NTU/ADC calibration, manual pump controls, feeds, sensor controls and reconnect regression tests passed.
 
-The original Mega-only migration requires firmware and application to be updated together. This turbidity update changes only firmware, tests and documentation; an existing installation of this Mega-only Python application does not need Python changes. Hardware pin assignments, calibration storage, local automatic control, manual controls and communication-loss stopping remain as described in `MEGA_SETUP.md`.
-
-## Results
-
-- **173 Python tests passed.** These cover the active Mega connection path, command names, configuration synchronization, serial renumbering, connection-loss handling, manual pumps, feeding and schedules, authentication, calibration storage, sensor configuration, settings, unit conversion, API routes and web rendering.
-- **Three C++ firmware simulations passed** using the actual single `.ino` file. They exercise combined sensor/actuator operation, direct local fan control, pump pairing, heartbeat expiry, whole serial frames, backpressure, command overflow, rollover, local quality confirmation, float priority, pH settling, calibration mode and outlier rejection. The added turbidity simulation verifies exactly 100 spaced samples, full-scale accumulator safety, ADC polarity, fractional means, NTU reference validation and interpolation, out-of-range handling, reset during acquisition, commands during sampling, and timer rollover.
-- **Actual AVR build passed** for `arduino:avr:mega:cpu=atmega2560`: 31,312 bytes flash (12%); 3,509 bytes static RAM (42%); 4,683 bytes remaining for runtime stack/heap. This is not a measured worst-case stack watermark.
-- In the preceding release, JavaScript syntax checks passed and all eight web pages passed DOM checks for navigation, roles, settings, units, sensors, fan/pumps, schedules and custom feeding status. Web files are unchanged in this turbidity update.
-
-Tests that exercised the retired Pi-side automatic pump decision path were migrated to the Mega firmware simulations; the host tests now verify settings synchronization and reported hardware state instead of asserting that the Pi sends automatic pump commands.
-
-Toolchain: Arduino AVR Boards 1.8.8; OneWire 2.3.8; DallasTemperature 4.0.6; Adafruit PWM Servo Driver Library 3.0.3; Adafruit BusIO 1.17.4.
+The GUI editor's save path was tested against the shared schedule service. A full Tk display check was unavailable in this environment. No real pumps, float switches, refill supply or USB electrical-noise test was available; automated checks do not establish physical water volume or ammonia concentration.
 
 ## Repeat checks
 
-From the project folder, with development dependencies installed:
-
 ```bash
 python -m pytest -q
+node --check static/water_schedule.js
+python tests/render_pages.py
+# Development-only Node dependency: npm install --no-save jsdom
+node tests/frontend_water_schedule_test.cjs
 arduino-cli compile --fqbn arduino:avr:mega:cpu=atmega2560 arduino/AquaPi_Mega
-g++ -std=c++17 -I tests/firmware_stubs tests/mega_firmware_test.cpp -o /tmp/aquapi-mega-test
-/tmp/aquapi-mega-test
-g++ -std=c++17 -I tests/firmware_stubs tests/mega_policy_test.cpp -o /tmp/aquapi-policy-test
-/tmp/aquapi-policy-test
-g++ -std=c++17 -I tests/firmware_stubs tests/mega_turbidity_test.cpp -o /tmp/aquapi-turbidity-test
-/tmp/aquapi-turbidity-test
+g++ -std=c++17 -I tests/firmware_stubs tests/mega_water_schedule_test.cpp -o /tmp/aquapi-water-test
+/tmp/aquapi-water-test
 ```
 
-No physical Mega, pump driver, aquarium or Raspberry Pi USB noise test was available here. Confirm wiring and calibration on the actual system before enabling automatic pumping. A successful build does not resolve a physical USB disconnection fault.
+Also run the existing `mega_firmware_test.cpp`, `mega_policy_test.cpp` and `mega_turbidity_test.cpp` in the same way. Arduino toolchain: AVR Boards 1.8.8, OneWire 2.3.8, DallasTemperature 4.0.6, Adafruit PWM Servo Driver Library 3.0.3 and Adafruit BusIO 1.17.4.
+

@@ -21,7 +21,7 @@ def reset():
 def commands():
     profile = calibration.status()['profile']
     ph = profile['ph'] or {'adc686': 0, 'adc918': 0}
-    rows = profile['turbidity'] or calibration.DEFAULT_RANGES
+    rows = calibration.effective_adc_ranges()
     settings = dict(ph=ph, rows=rows, low=config.PH_CRITICAL_LOW_LIMIT,
                     high=config.PH_CRITICAL_HIGH_LIMIT, wl=config.PH_LOW_LIMIT,
                     wh=config.PH_HIGH_LIMIT, fan=config.TEMP_OVERHEAT_LIMIT_C,
@@ -61,6 +61,8 @@ def sync(force=False):
 def handle_status(line):
     global _ack
     fields = dict(p.split(':',1) for p in line.split(',') if ':' in p)
+    import water_schedule
+    water_schedule.handle_status(fields)
     if 'CFG' in fields:
         try: _ack = int(fields['CFG'])
         except ValueError: pass

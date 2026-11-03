@@ -83,6 +83,8 @@ class LocalControls(tk.Toplevel):
         ttk.Button(feeding, text='Edit feeding schedule', command=schedule_callback).pack(anchor='w', pady=14)
         ttk.Label(feeding, text='Pause skips scheduled feeds. Feed now does not change your schedule.\nStop cancels the active serving; it does not pause future schedules.').pack(anchor='w')
         pumps = self.tabs['Water pumps']
+        self.water_schedule_window = None
+        ttk.Button(pumps, text='Water-change schedule', command=self.open_water_schedule).pack(anchor='w', pady=(0, 12))
         ttk.Label(pumps, text='Manual control overrides automatic water changes.', font=('Arial', 12, 'bold')).pack(anchor='w')
         ttk.Label(pumps, text='Drain = remove tank water. Refill = add fresh water.\nStop draining / Stop refilling stops that pump only; the other keeps its state.\nManual pumps keep running until stopped. Stay with the tank.\nStop keeps automatic control paused; Resume auto restores it.').pack(anchor='w', pady=12)
         self.pump_status = tk.StringVar()
@@ -251,6 +253,13 @@ class LocalControls(tk.Toplevel):
             self.message.set(str(exc))
             messagebox.showerror('Cannot complete request', str(exc), parent=self)
 
+    def open_water_schedule(self):
+        if self.water_schedule_window and self.water_schedule_window.winfo_exists():
+            self.water_schedule_window.lift()
+        else:
+            from water_schedule_gui import WaterScheduleWindow
+            self.water_schedule_window = WaterScheduleWindow(self)
+
     def refresh(self, schedule=True):
         if not self.winfo_exists():
             return
@@ -294,6 +303,8 @@ class LocalControls(tk.Toplevel):
             self.after_id = self.after(1000, self.refresh)
 
     def close(self):
+        if self.water_schedule_window and self.water_schedule_window.winfo_exists():
+            self.water_schedule_window.close()
         if self._pin_after:
             self.after_cancel(self._pin_after)
         if self.after_id:

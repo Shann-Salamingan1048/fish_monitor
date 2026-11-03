@@ -13,6 +13,7 @@ import calibration
 import fan_control
 import feeding_control
 import water_control
+import water_schedule
 import sensor_control
 from feeding_scheduler import feeding_schedule_worker
 from mcu_comm import get_communicator
@@ -57,6 +58,7 @@ def main():
     feeding_control.initialize()
     calibration.initialize()
     sensor_control.initialize()
+    water_schedule.initialize()
     stop_event = threading.Event()
     # Binding before hardware startup also prevents two copies from using the Mega.
     server = make_server(config.WEB_HOST, config.WEB_PORT, flask_app, threaded=True)
@@ -74,6 +76,8 @@ def main():
         communicator.start_reading(config.MEGA_PORT)
         worker = threading.Thread(target=feeding_schedule_worker, args=(stop_event,), daemon=True)
         worker.start()
+        water_worker = threading.Thread(target=water_schedule.worker, args=(stop_event,), daemon=True)
+        water_worker.start()
         url = f'http://localhost:{config.WEB_PORT}'
         print(f'Dashboard: {url} (bind address: {config.WEB_HOST})')
         for phone_url in local_network_urls():
@@ -98,6 +102,8 @@ def main():
         # Wait for the scheduler to leave its command path before shutdown stops.
         if 'worker' in locals():
             worker.join(timeout=3)
+        if 'water_worker' in locals():
+            water_worker.join(timeout=3)
         try:
             feeding_control.stop_feeder()
         except ValueError:
