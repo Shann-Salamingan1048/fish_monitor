@@ -23,18 +23,18 @@ int main(){
  step(1);assert(O::extractionPumpOn && O::insertionPumpOn);
  step();assert(O::extractionPumpOn && O::insertionPumpOn); // No mode-change oscillation.
  I::upperTriggered=true;step();assert(O::extractionPumpOn && !O::insertionPumpOn);
- normal();step();assert(O::extractionPumpOn && O::insertionPumpOn);
+ normal();step();step(3000);assert(O::extractionPumpOn && O::insertionPumpOn);
  I::normalTriggered=false;step();assert(!O::extractionPumpOn && O::insertionPumpOn);
- normal();step();assert(O::extractionPumpOn && O::insertionPumpOn);
+ normal();step();step(3000);assert(O::extractionPumpOn && O::insertionPumpOn);
  readings(600,850);step();assert(O::extractionPumpOn && O::insertionPumpOn);
  readings(900,850);step();assert(!O::extractionPumpOn && !O::insertionPumpOn);
  readings(900,950);step();step(199);assert(!O::extractionPumpOn); // pH stabilization pause.
  step(1);step(100);assert(O::extractionPumpOn && O::insertionPumpOn && P::quality==2);
  readings(900,850);step();assert(!O::extractionPumpOn);
- // Very Low is critical, Low by itself is warning only.
- I::normalTriggered=false;I::lowTriggered=true;step();assert(!O::insertionPumpOn);
+ // Both Low and Very Low refill, then continue through the Normal allowance.
+ I::normalTriggered=false;I::lowTriggered=true;step();assert(O::insertionPumpOn);
  I::lowTriggered=false;step();assert(O::insertionPumpOn && !O::extractionPumpOn);
- normal();step();assert(!O::insertionPumpOn);
+ normal();step();assert(O::insertionPumpOn);step(3000);assert(!O::insertionPumpOn);
  // Disabling the driving quality sensor cancels its local action.
  readings(100,850);step();step(100);assert(O::extractionPumpOn);
  cmd("MegaInput,SENSORS:59,REV:2");normal();step();assert(!O::extractionPumpOn && !O::insertionPumpOn);

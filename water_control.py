@@ -179,7 +179,7 @@ def _set_state_locked(
         "auto_extract_ph",
     }:
         # Floats + turbidity + pH.
-        # Temperature stays off while a water pump is running.
+        # Temperature remains active in every pump mode.
         _set_sensor_mode_locked("AUTO_QUALITY")
 
     elif extraction or insertion:
@@ -214,9 +214,7 @@ def get_status():
         status["sensorMode"] != "NORMAL"
     )
 
-    status["temperatureActive"] = (
-        status["sensorMode"] == "NORMAL"
-    )
+    status["temperatureActive"] = sensor_control.enabled("temp")
 
     status["phActive"] = (
         status["sensorMode"]
@@ -257,7 +255,7 @@ def get_sensor_policy():
     return {
         "mode": mode,
         "float": any(sensor_control.enabled(k) for k in sensor_control.FLOAT_KEYS),
-        "temp": sensor_control.enabled('temp') and mode == "NORMAL",
+        "temp": sensor_control.enabled('temp'),
         "ph": sensor_control.enabled('ph') and mode in {"NORMAL", "AUTO_QUALITY"},
         "turbidity": sensor_control.enabled('turbidity') and mode in {"NORMAL", "AUTO_QUALITY"},
     }

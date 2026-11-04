@@ -22,6 +22,36 @@ const tick=()=>new Promise(r=>setTimeout(r,20));
  assert.equal($('live-turbidity-ntu').textContent,'Not calibrated');
  assert($('calibration-fields').disabled);
  $('calibration-start').click();await tick();assert(!$('calibration-fields').disabled);
+ assert.equal($('ph-points').value,'2');assert($('ph-acid-field').hidden);
+ $('ph-custom').checked=true;
+ $('ph-points').value='3';$('ph-points').dispatchEvent(new w.Event('change'));
+ assert(!$('ph-acid-field').hidden && !$('adc401').disabled);
+ $('adc401').value='1000.25';$('adc686').value='900.125';$('adc918').value='800.5';
+ await poll();assert.equal($('adc401').value,'1000.25');
+ $('calibration-form').dispatchEvent(new w.Event('submit',{cancelable:true}));await tick();
+ assert.deepEqual(mutations.at(-1).ph,{points:3,adc401:1000.25,adc686:900.125,adc918:800.5});
+ assert.equal($('ph-points').value,'3');
+ $('ph-points').value='2';$('ph-points').dispatchEvent(new w.Event('change'));
+ assert($('ph-acid-field').hidden && $('adc401').disabled);
+ $('calibration-form').dispatchEvent(new w.Event('submit',{cancelable:true}));await tick();
+ assert.deepEqual(mutations.at(-1).ph,{points:2,pair:'686_918',adc686:900.125,adc918:800.5});
+
+ for(const pair of ['401_686','401_918','686_918']) {
+  $('ph-pair').value=pair;$('ph-pair').dispatchEvent(new w.Event('change'));
+  const values={401:1000.25,686:900.125,918:800.5};
+  const expected={points:2,pair};
+  for(const buffer of ['401','686','918']) {
+   const selected=pair.split('_').includes(buffer);
+   assert.equal($('adc'+buffer).disabled,!selected);
+   if(selected){$('adc'+buffer).value=String(values[buffer]);expected['adc'+buffer]=values[buffer];}
+  }
+  await poll();assert.equal($('ph-pair').value,pair);
+  $('calibration-form').dispatchEvent(new w.Event('submit',{cancelable:true}));await tick();
+  assert.deepEqual(mutations.at(-1).ph,expected);
+  assert.equal($('ph-pair').value,pair);
+ }
+ state.live.turbidityNTU=null;state.live.turbidityNTUState='not_calibrated';
+
  const changeUnit=unit=>{$('turbidity-unit').value=unit;$('turbidity-unit').dispatchEvent(new w.Event('change'));};
  changeUnit('NTU');assert($('ntu-calibrated').checked && $('turbidity-custom').checked);assert(!$('ntu-calibration-panel').hidden);
  const point=(i,key)=>$('ntu-points').children[i].querySelector(`[data-field="${key}"]`);

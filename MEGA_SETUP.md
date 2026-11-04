@@ -99,17 +99,16 @@ The protocol now consistently uses `MegaInput`, `MegaInputStatus`, `MegaOutput`,
 
 ## Calibration and automatic behavior
 
-**Recheck/recalibrate pH and turbidity after moving to the Mega.** Old ADC values may shift with the board's ADC reference and power supply. Use your real pH **6.86 and 9.18** buffers in the existing Developer option page. Do not reuse example ADC values as actual measurements.
+**Recheck/recalibrate pH and turbidity after moving to the Mega.** Old ADC values may shift with the board's ADC reference and power supply. In Developer option, choose any two of your **4.01, 6.86 and 9.18** buffers, or choose all three. Do not reuse example ADC values as actual measurements.
 
-The firmware's two ADC constants remain zero until you enter measured constants yourself or the Pi sends a saved web calibration. Zero constants deliberately mean uncalibrated, not pH zero. Web calibration is copied into RAM; the Mega then applies the pH formula locally. The web uses that reported pH instead of independently filtering it a second time. Custom turbidity labels remain in the web. Developer option accepts ADC or NTU clarity ranges and shows both readings. NTU references and ranges are converted on the Pi into matching ADC ranges and clarity categories for the Mega; no firmware re-upload is required. See `TURBIDITY_NTU.md`.
+The firmware's two ADC constants remain zero until you enter measured constants yourself or the Pi sends a saved web calibration. Zero constants deliberately mean uncalibrated, not pH zero. Web calibration, including the chosen 2/3-point method, is copied into RAM; the Mega then applies the pH formula locally. Three-point calibration uses two linear segments meeting at 6.86; each passes through its two measured buffers. Both formulas are in this firmware, so switching methods requires no further upload. The web uses that reported pH instead of independently filtering it a second time. Custom turbidity labels remain in the web. Developer option accepts ADC or NTU clarity ranges and shows both readings. NTU references and ranges are converted on the Pi into matching ADC ranges and clarity categories for the Mega; no firmware re-upload is required. See `TURBIDITY_NTU.md`.
 
-The current critical-only policy is preserved:
+Automatic operation:
 
 | Condition in automatic mode | Local action |
 |---|---|
-| Overflow | Extraction only, with level priority |
-| Very Low | Insertion until Normal |
-| Low warning alone | No new idle refill; during quality correction, insertion takes priority |
+| Overflow | Extraction until Normal has remained detected for 3 seconds; Low immediately takes priority |
+| Low / Very Low | Insertion until Normal has remained detected for 3 seconds |
 | Very Cloudy (critical category) for 5 seconds | Both pumps; continue through Cloudy/Slightly Cloudy until Clear/Very Clear |
 | Cloudy warning alone | Does not start fail-safe |
 | Critical pH for 5 seconds | Both pumps; stop quality correction once inside the warning range |
@@ -118,7 +117,7 @@ The current critical-only policy is preserved:
 | Calibration mode | Quality corrections paused; float protection remains available |
 | Manual pump override | Runs the chosen manual action; automatic rules resume only when requested |
 
-pH limits and critical temperature use your existing saved alert settings. The fan reads temperature locally, preserving its 5-second confirmation and 0.5 °C hysteresis. Feeder scheduling stays on the Pi, while the Mega executes the requested number of cycles without blocking sensors. Feeding is rejected/stopped during pumping as before.
+pH limits and critical temperature use your existing saved alert settings. The fan reads temperature locally in every pump mode, preserving its 5-second confirmation and 0.5 °C hysteresis. Temperature stays active unless explicitly disabled or the system is off. Feeder scheduling stays on the Pi, while the Mega executes the requested number of cycles without blocking sensors. Feeding is rejected/stopped during pumping as before.
 
 ## Optimization and validation
 
@@ -131,7 +130,7 @@ pH limits and critical temperature use your existing saved alert settings. The f
 - 500 ms telemetry snapshots; sensor acquisition intervals remain independent.
 - Atomic configuration staging: incomplete settings cannot enable automatic quality control.
 
-Verified with an actual `arduino:avr:mega:cpu=atmega2560` build using Arduino AVR Boards 1.8.8, OneWire 2.3.8, DallasTemperature 4.0.6, Adafruit PWM Servo Driver 3.0.3 and Adafruit BusIO 1.17.4: **31,312 bytes flash (12%), 3,509 bytes static RAM (42%), 4,683 bytes remaining for stack/heap**. These are compile-time figures, not a measured worst-case stack watermark.
+See `VALIDATION.md` for the current Mega build size and validation results.
 
 See `VALIDATION.md` for the current test results. Three C++ simulations test combined operation and local protection, including no Pi pump/temperature commands during automatic decisions, both pumps, float priority, confirmation, pH settling, outlier rejection, disabled sensors, calibration mode, packet boundaries, UART backpressure, heartbeat expiry, manual stops and System Off. Physical pump wiring and USB-noise behavior were not tested here.
 

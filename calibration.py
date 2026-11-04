@@ -9,6 +9,10 @@ import math
 import time
 import config
 
+PH_BUFFERS = {'adc401': '4.01', 'adc686': '6.86', 'adc918': '9.18'}
+PH_PAIRS = {'686_918': ('adc686', 'adc918'), '401_686': ('adc401', 'adc686'),
+            '401_918': ('adc401', 'adc918')}
+
 CATEGORIES = ('Very Cloudy', 'Cloudy', 'Slightly Cloudy', 'Clear', 'Very Clear')
 DEFAULT_RANGES = [
     {'min': 0, 'max': 170, 'label': 'Very Cloudy', 'category': 'Very Cloudy'},
@@ -39,13 +43,26 @@ def validate(payload):
         raise ValueError('Provide pH and turbidity settings.')
     ph = payload['ph']
     if ph is not None:
-        if not isinstance(ph, dict) or set(ph) != {'adc686', 'adc918'}:
-            raise ValueError('Provide ADC readings for pH 6.86 and 9.18.')
-        a = _number(ph['adc686'], 'pH 6.86 ADC', 1, 1022)
-        b = _number(ph['adc918'], 'pH 9.18 ADC', 1, 1022)
-        if a - b < 20:
-            raise ValueError('6.86 ADC must exceed 9.18 ADC by at least 20 counts. Check the buffers and readings.')
-        ph = {'adc686': a, 'adc918': b}
+        if not isinstance(ph, dict):
+            raise ValueError('Provide pH calibration values.')
+        points = ph.get('points', 2)
+        if isinstance(points, bool) or points not in (2, 3):
+            raise ValueError('Choose 2-point or 3-point pH calibration.')
+        pair = ph.get('pair', '686_918')
+        if not isinstance(pair, str) or pair not in PH_PAIRS:
+            raise ValueError('Choose a valid pH buffer pair.')
+        keys = ('adc401', 'adc686', 'adc918') if points == 3 else PH_PAIRS[pair]
+        allowed = set(keys) | {'points'} | ({'pair'} if points == 2 else set())
+        if set(ph) - allowed or not set(keys) <= set(ph):
+            raise ValueError('Enter ADC values only for the selected pH buffers.')
+        values = {key: _number(ph[key], 'pH ' + PH_BUFFERS[key] + ' ADC', 1, 1022) for key in keys}
+        for lower, upper in zip(keys, keys[1:]):
+            if values[lower] - values[upper] < 20:
+                raise ValueError(PH_BUFFERS[lower] + ' ADC must exceed ' + PH_BUFFERS[upper] + ' ADC by at least 20 counts.')
+        # Preserve legacy two-/three-point profiles without requiring a migration.
+        if 'points' in ph: values['points'] = points
+        if 'pair' in ph: values['pair'] = pair
+        ph = values
     unit = payload.get('turbidityUnit', 'ADC')
     if unit not in ('ADC', 'NTU'):
         raise ValueError('Choose ADC or NTU for turbidity ranges.')

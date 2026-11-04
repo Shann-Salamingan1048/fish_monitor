@@ -112,20 +112,11 @@ def process_due_feeding_schedules(local_now=None):
         with config.db_connect() as conn:
             conn.execute("UPDATE feeding_schedules SET last_status='cancelled' WHERE last_status='pending'")
         return []
-    # Discard old pending feeds rather than emptying a backlog after an outage.
-    fresh = []
-    for schedule in pending:
-        age = now.timestamp() - (schedule.get('lastTriggeredAt') or 0)
-        if age > 1800:
-            with config.db_connect() as conn:
-                conn.execute("UPDATE feeding_schedules SET last_status='expired' WHERE id=? AND last_status='pending'", (schedule['id'],))
-        else:
-            fresh.append(schedule)
     if water_control.is_pump_active() or status['busy'] or not status['ready']:
         return []
     results = []
     # One active serving at a time. Firmware reports completion before the next.
-    for schedule in fresh[:1]:
+    for schedule in pending[:1]:
         try:
             feeding_control.request_feed(schedule['cycles'], 'schedule', schedule)
             results.append({'scheduleId': schedule['id'], 'sent': True})

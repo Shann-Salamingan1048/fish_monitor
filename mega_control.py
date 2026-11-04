@@ -29,7 +29,8 @@ def commands():
                     settle=round(config.PH_SETTLE_SECONDS*1000), maintenance=calibration.active())
     revision = zlib.crc32(json.dumps(settings,sort_keys=True).encode())
     first = (f"MegaConfig,BEGIN:{revision},PL:{settings['low']:g},PH:{settings['high']:g},"
-             f"WL:{settings['wl']:g},WH:{settings['wh']:g},A6:{ph['adc686']:.4f},A9:{ph['adc918']:.4f},"
+             f"WL:{settings['wl']:g},WH:{settings['wh']:g},A6:{ph.get('adc686', 0):.4f},A9:{ph.get('adc918', 0):.4f},"
+             f"PC:{ph.get('points', 2)},A4:{ph.get('adc401', 0):.4f},PP:{list(calibration.PH_PAIRS).index(ph.get('pair', '686_918'))},"
              f"FAN:{settings['fan']:g},CONF:{settings['confirm']},SETTLE:{settings['settle']},"
              f"MAINT:{int(settings['maintenance'])},ROWS:{len(rows)}\n")
     messages = [first]

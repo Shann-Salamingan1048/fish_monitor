@@ -100,15 +100,9 @@ class LocalControls(tk.Toplevel):
             button = ttk.Button(fan, text=label, command=lambda m=mode: self.run(lambda: fan_control.set_mode(m)))
             button.pack(anchor='w', pady=5)
             self.fan_buttons.append(button)
-        self.fan_explanation = ttk.Label(fan, text='Auto starts only at the critical temperature after 5 seconds and uses a 0.5°C cooling margin. '
-                  'On and Off override temperature control, including when the temperature sensor is disabled. '
-                  'Choose Auto to resume automatic cooling. Restarting the app restores Auto.',
+        self.fan_explanation = ttk.Label(fan, text='Auto follows the temperature limit. On / Off overrides it.',
                   wraplength=540)
         self.fan_explanation.pack(anchor='w', pady=12)
-        ttk.Label(pumps, text='Only critical pH and Very Cloudy water start correction, after 5 seconds. Warning readings do not start pumps. '
-                  'Normal or invalid readings reset the confirmation. Automatic correction runs both pumps; '
-                  'Overflow and Very Low start immediate level correction; Low alone is a warning. Active refill continues until Normal.',
-                  wraplength=540).pack(anchor='w', pady=12)
         sensors = self.tabs['Sensors']
         ttk.Label(sensors, text='Sensor activation', font=('Arial', 13, 'bold')).pack(anchor='w')
         ttk.Label(sensors, text='Disable a faulty sensor to exclude its readings, alerts and automatic actions. '

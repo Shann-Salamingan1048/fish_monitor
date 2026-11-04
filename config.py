@@ -385,6 +385,8 @@ def claim_due_feeding_schedules(local_now):
 
         claimed = []
         for row in enabled_rows:
+            if row['last_status'] == 'pending':
+                continue
             hour, minute = (int(part) for part in row["feed_time"].split(":"))
             daily = int(row["day_of_week"]) == EVERY_DAY
             days_back = 0 if daily else (local_now.weekday() - int(row["day_of_week"])) % 7

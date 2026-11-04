@@ -66,7 +66,16 @@ def handle_status(line):
             return
         if not _active or fields.get('JOB') != str(_active['id']):
             return
-        status = {'STARTED': 'running', 'COMPLETE': 'complete',
+        if event == 'DEFERRED' and _active['status'] == 'sent':
+            # Firmware confirms zero cycles started: safe to postpone this schedule.
+            schedule_id, date = _active.get('schedule_id'), _active.get('trigger_date')
+            _record_status('deferred' if schedule_id else 'rejected')
+            if schedule_id:
+                with config.db_connect() as conn:
+                    conn.execute("UPDATE feeding_schedules SET last_status='pending' WHERE id=? AND last_triggered_date=? AND last_status='deferred' AND enabled=1", (schedule_id,date))
+            _active = None
+            return
+        status = {'STARTED': 'running' , 'COMPLETE': 'complete',
                   'STOPPED': 'cancelled', 'REJECTED': 'rejected'}.get(event)
         if status:
             _record_status(status)

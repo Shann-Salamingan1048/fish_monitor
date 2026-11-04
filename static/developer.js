@@ -70,6 +70,17 @@
         remove.addEventListener('click', () => entry.remove()); entry.append(remove);
         $('ntu-points').append(entry);
     }
+    function showPH() {
+        const three = $('ph-points').value === '3';
+        const pair = $('ph-pair').value;
+        $('ph-pair-field').hidden = three;
+        $('ph-pair').disabled = three;
+        for (const [buffer, field] of [['401', 'ph-acid-field'], ['686', 'ph-neutral-field'], ['918', 'ph-basic-field']]) {
+            const selected = three || pair.split('_').includes(buffer);
+            $(field).hidden = !selected;
+            $('adc' + buffer).disabled = !selected;
+        }
+    }
     function showNTU() {
         $('ntu-calibration-panel').hidden = !$('ntu-calibrated').checked;
     }
@@ -90,6 +101,10 @@
             'Enable the sensors to read ADC. Measurements pause during level-only or manual pumping.';
         if (fill) {
             $('ph-custom').checked = Boolean(state.profile.ph);
+            $('ph-points').value = String(state.profile.ph?.points ?? 2);
+            $('ph-pair').value = state.profile.ph?.pair ?? '686_918';
+            $('adc401').value = state.profile.ph?.adc401 ?? '';
+            showPH();
             $('adc686').value = state.profile.ph?.adc686 ?? '';
             $('adc918').value = state.profile.ph?.adc918 ?? '';
             $('turbidity-custom').checked = state.profile.turbidity !== null;
@@ -131,6 +146,8 @@
         if (!window.confirm('Have you saved your changes and returned both probes to the aquarium?')) return;
         mutate('POST', {active: false}, 'Calibration finished. pH correction will wait for the settling period.');
     });
+    $('ph-points').addEventListener('change', showPH);
+    $('ph-pair').addEventListener('change', showPH);
     $('ntu-calibrated').addEventListener('change', showNTU);
     $('add-ntu-point').addEventListener('click', () => addPoint());
     $('turbidity-unit').addEventListener('change', () => {
@@ -146,7 +163,12 @@
     $('add-range').addEventListener('click', () => addRow());
     $('calibration-form').addEventListener('submit', event => {
         event.preventDefault();
-        const ph = $('ph-custom').checked ? {adc686: Number($('adc686').value), adc918: Number($('adc918').value)} : null;
+        const ph = $('ph-custom').checked ? {points: Number($('ph-points').value)} : null;
+        if (ph) {
+            if (ph.points === 2) ph.pair = $('ph-pair').value;
+            const buffers = ph.points === 3 ? ['401', '686', '918'] : ph.pair.split('_');
+            for (const buffer of buffers) ph['adc' + buffer] = $('adc' + buffer).value === '' ? null : Number($('adc' + buffer).value);
+        }
         const turbidity = $('turbidity-custom').checked ? readRows('turbidity-ranges') : null;
         const turbidityPoints = $('ntu-calibrated').checked ? readRows('ntu-points') : null;
         mutate('PUT', {ph, turbidity, turbidityUnit: rangeUnit, turbidityPoints},

@@ -24,7 +24,7 @@ int main(){
  cmd("MegaOutput,WATERCHANGE:START,JOB:2,DRAIN:5,REFILL:10");assert(P::wcJob==1 && P::wcPhase==1);
  level(false,false,false);step(); // Early lower float cut-off, before 5 seconds.
  assert(P::wcPhase==2 && O::insertionPumpOn && !O::extractionPumpOn);
- level(true,true,false);step();assert(!P::wcPhase && !O::insertionPumpOn && P::autoMode);
+ level(true,true,false);step();assert(P::wcPhase);step(3000);assert(!P::wcPhase && !O::insertionPumpOn && P::autoMode);
  assert(!strcmp(P::wcStatus,"COMPLETE") && P::settling);
  cmd("MegaOutput,WATERCHANGE:START,JOB:1,DRAIN:5,REFILL:10");assert(!P::wcPhase); // No completed-job replay.
  ready();cmd("MegaOutput,WATERCHANGE:START,JOB:3,DRAIN:2,REFILL:3");
@@ -32,7 +32,9 @@ int main(){
  step(3000);assert(!P::wcPhase && !P::autoMode && !O::insertionPumpOn);
  assert(!strcmp(P::wcReason,"REFILL_TIMEOUT"));
  ready();cmd("MegaOutput,WATERCHANGE:START,JOB:4,DRAIN:2,REFILL:3");
- level(true,true,true);step();assert(!P::wcPhase && !O::extractionPumpOn && !O::insertionPumpOn && !P::autoMode);
+ level(true,true,true);step();assert(!P::wcPhase && !O::insertionPumpOn && P::autoMode);
+ step();assert(O::extractionPumpOn && !O::insertionPumpOn);
+ level(true,true,false);step();step(3000);assert(!O::extractionPumpOn);
  ready();cmd("MegaOutput,WATERCHANGE:START,JOB:5,DRAIN:2,REFILL:3");
  level(false,true,false);step();assert(!P::wcPhase && !strcmp(P::wcReason,"FLOATS_OR_CONFIG"));
  ready();cmd("MegaOutput,WATERCHANGE:START,JOB:6,DRAIN:2,REFILL:3");
@@ -48,9 +50,9 @@ int main(){
  cmd("MegaOutput,FEED:STOP,JOB:0");
  ready();P::active.maintenance=true;cmd("MegaOutput,WATERCHANGE:START,JOB:11,DRAIN:2,REFILL:3");assert(!P::wcPhase);
  ready();cmd("MegaOutput,WATERCHANGE:START,JOB:12,DRAIN:601,REFILL:3");assert(!P::wcPhase);
- ready();fakeMillis=UINT32_MAX-1000;cmd("MegaOutput,WATERCHANGE:START,JOB:13,DRAIN:2,REFILL:3");
+ ready();fakeMillis=UINT32_MAX-1000;cmd("MegaOutput,WATERCHANGE:START,JOB:13,DRAIN:2,REFILL:10");
  level(true,false,false);step(2000);assert(P::wcPhase==2);
- level(true,true,false);step();assert(!P::wcPhase && !O::insertionPumpOn);
+ level(true,true,false);step();assert(P::wcPhase);step(3000);assert(!P::wcPhase && !O::insertionPumpOn);
  // UART congestion cannot block a local refill timeout.
  ready();cmd("MegaOutput,WATERCHANGE:START,JOB:14,DRAIN:1,REFILL:1");level(true,false,false);Serial.txSpace=0;
  step(1000);assert(P::wcPhase==2);step(1000);assert(!P::wcPhase && !O::insertionPumpOn);

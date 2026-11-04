@@ -1,14 +1,15 @@
-# Water-change scheduling release validation
+# AquaPi control and calibration validation
 
 ## Current update
 
-- 223 Python tests passed (including schedule CRUD, weekday/everyday selection, atomic claims, start guards, missed-run handling, no replay, feed conflicts, deadline stopping, access control, cross-site write rejection, and GUI use of the shared service).
-- Water schedule JavaScript syntax and jsdom interaction checks passed: viewer/Admin controls, adding/editing, draft preservation during polling, pause/enable, deletion and Stop.
-- Four C++ simulations passed using the actual combined `.ino`. The new simulation covers drain timing and Low cutoff, refill to Normal, refill timeout, Upper/contradictory floats, disabled sensors, manual cancellation, System Off, heartbeat expiry, duplicate jobs, feeding/calibration conflicts, timer rollover and serial backpressure.
-- Actual Mega AVR compilation passed. Final build: 33,002 bytes flash (12%), 3,780 bytes static RAM (46%), 4,412 bytes remaining for stack/heap. This is not a measured worst-case stack watermark.
-- Existing NTU/ADC calibration, manual pump controls, feeds, sensor controls and reconnect regression tests passed.
+- 268 Python tests passed. Coverage includes 2/3-point calibration persistence, input validation and Admin API access; temperature display/alerts during pumping; feeding postponement beyond 30 minutes and explicit not-started hardware conflicts; existing schedule, serial reconnect and security regressions.
+- Six C++ simulations passed using the actual combined `.ino`: core firmware, automatic policy, scheduled water changes, turbidity and the control/calibration cases and all two-point buffer pairs.
+- Pair-selection checks cover all three pairs, selected-only ADC serialization, saved profile reload, invalid pairs/spans, three-point continuity, exact buffer endpoints and midpoint interpolation, spike rejection and filter convergence. Web checks cover pair switching and hiding unused fields.
+- New firmware checks cover 2/3-point formula switching and buffer endpoints, invalid configuration rejection, Low and Very Low refilling, 3-second Normal allowance, float bounce, opposite-level priority, timer rollover, simultaneous quality triggers, temperature sampling and cooler activation while both pumps run.
+- Web jsdom checks passed for calibration method selection, acid-field visibility, draft retention, saving/reloading 3 points and returning to 2 points, existing NTU/ADC editing and scheduled water-change controls. Eight web pages rendered successfully.
+- Actual Mega AVR compilation passed: **34,238 bytes flash (13%), 3,832 bytes static RAM (46%), 4,360 bytes remaining for stack/heap**. This is not a measured worst-case stack watermark.
 
-The GUI editor's save path was tested against the shared schedule service. A full Tk display check was unavailable in this environment. No real pumps, float switches, refill supply or USB electrical-noise test was available; automated checks do not establish physical water volume or ammonia concentration.
+GUI changes were limited to removing the requested notice and shortening text; a full Tk display check was unavailable. No physical pumps, probes or float switches were connected. Test the 3-second allowance against your real pump flow and float positions before leaving the system unattended.
 
 ## Repeat checks
 
@@ -23,5 +24,5 @@ g++ -std=c++17 -I tests/firmware_stubs tests/mega_water_schedule_test.cpp -o /tm
 /tmp/aquapi-water-test
 ```
 
-Also run the existing `mega_firmware_test.cpp`, `mega_policy_test.cpp` and `mega_turbidity_test.cpp` in the same way. Arduino toolchain: AVR Boards 1.8.8, OneWire 2.3.8, DallasTemperature 4.0.6, Adafruit PWM Servo Driver Library 3.0.3 and Adafruit BusIO 1.17.4.
+Also run the existing `mega_firmware_test.cpp`, `mega_policy_test.cpp` and `mega_turbidity_test.cpp` and `mega_control_update_test.cpp` and `mega_ph_pairs_test.cpp` in the same way. Arduino toolchain: AVR Boards 1.8.8, OneWire 2.3.8, DallasTemperature 4.0.6, Adafruit PWM Servo Driver Library 3.0.3 and Adafruit BusIO 1.17.4.
 

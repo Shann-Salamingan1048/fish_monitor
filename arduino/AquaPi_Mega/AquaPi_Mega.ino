@@ -482,8 +482,12 @@ void queueFeedCycles(uint32_t cycles, unsigned long now, uint32_t job = 0)
 {
   // Never build an unbounded queue, overlap a feed, or feed during pumping.
   if (cycles < 1 ||
-      feederState != FeederState::IDLE || extractionPumpOn || insertionPumpOn) {
+      feederState != FeederState::IDLE) {
     reportFeeder(F("REJECTED"), job);
+    return;
+  }
+  if (extractionPumpOn || insertionPumpOn) {
+    reportFeeder(F("DEFERRED"), job); // Explicitly not started; scheduler may postpone.
     return;
   }
   feederJob = job;
@@ -894,6 +898,9 @@ constexpr float PH_PER_ADC = PH_CALIBRATION_VALID ?
 
 float runtimePh686 = PH_ADC_686, runtimePh918 = PH_ADC_918;
 float runtimePhScale = PH_PER_ADC;
+float runtimePh401 = 0.0f, runtimePhAcidScale = 0.0f;
+uint8_t runtimePhPoints = 2, runtimePhPair = 0;
+float runtimePhAnchorADC = PH_ADC_686, runtimePhAnchorValue = PH_BUFFER_686;
 bool runtimePhValid = PH_CALIBRATION_VALID;
 
 constexpr uint8_t PH_SAMPLE_COUNT = 15;
@@ -906,13 +913,16 @@ bool phRawMode = false;               // Read-only bench diagnostics; never save
 bool phRawReportPending = false;
 
 void writePhCalibrationStatus(Print &out) {
-  out.print(F("MegaInputStatus,PHCAL:CODE_CONSTANTS,PH_PIN:A1,CALIBRATED:"));
-  out.print(PH_CALIBRATION_VALID ? 1 : 0);
-  if (PH_CALIBRATION_VALID) {
-    out.print(F(",PH686_ADC:")); out.print(PH_ADC_686, 2);
-    out.print(F(",PH918_ADC:")); out.print(PH_ADC_918, 2);
+  out.print(F("MegaInputStatus,PHCAL:ACTIVE,PH_PIN:A1,CALIBRATED:"));
+  out.print(runtimePhValid ? 1 : 0);
+  out.print(F(",POINTS:")); out.print(runtimePhPoints);
+  out.print(F(",PAIR:")); out.print(runtimePhPair);
+  if (runtimePhValid) {
+    out.print(F(",PH686_ADC:")); out.print(runtimePh686, 2);
+    out.print(F(",PH918_ADC:")); out.print(runtimePh918, 2);
+    if (runtimePhPoints == 3 || runtimePhPair != 0) { out.print(F(",PH401_ADC:")); out.print(runtimePh401, 2); }
   } else {
-    out.print(F(",ACTION:SET_PH_ADC_CONSTANTS"));
+    out.print(F(",ACTION:CALIBRATE_IN_WEB"));
   }
   out.println();
 }
@@ -925,9 +935,9 @@ DallasTemperature waterTempSensor(&oneWire);
 // ========================== SENSOR MODE ==========================
 
 // NORMAL       : temperature + floats + turbidity + pH
-// AUTO_QUALITY : floats + turbidity + pH; temperature paused while extracting
-// AUTO_EXTRACT : legacy alias behavior; floats + turbidity only
-// FLOAT_ONLY   : floats only (used during insertion/manual pumping)
+// AUTO_QUALITY : all enabled sensors, including temperature
+// AUTO_EXTRACT : legacy alias behavior; temperature + floats + turbidity
+// FLOAT_ONLY   : temperature + floats (used during insertion/manual pumping)
 enum class SensorMode : uint8_t {
   NORMAL,
   AUTO_QUALITY,
@@ -1013,17 +1023,18 @@ bool turbidityActive() {
   return !phRawMode && sensorEnabled(TURBIDITY_BIT) &&
          sensorMode != SensorMode::FLOAT_ONLY;
 }
-void resetAcquisition() {
+void resetAcquisition(bool full = true) {
   const uint32_t now = millis();
-  tempReady = tempValid = phReadingReady = floatsReady = false;
+  phReadingReady = false;
+  if (full) { tempReady = tempValid = floatsReady = false; tempPending = false; lastTempRead = now - tempInterval; }
   turbidityReady = false;
   turbidityReportPending = false;
   turbidityTotal = 0; turbidityMeanADC = 0; turbidityNTU = NAN;
   phRawADC = phAverageADC = 0.0f;
   phRawReportPending = false;
-  floatValue = turbidityValue = F("WAITING");
-  tempPending = false; adcTask = AdcTask::IDLE; sampleCount = 0;
-  lastTempRead = now - tempInterval;
+  turbidityValue = F("WAITING");
+  if (full) floatValue = F("WAITING");
+  adcTask = AdcTask::IDLE; sampleCount = 0;
   lastPhRead = now - phInterval;
   lastTurbidityRead = now - turbidityInterval;
   lastFloatRead = now - floatInterval;
@@ -1094,14 +1105,17 @@ void handleCommand(char *message) {
   else if (strcmp_P(value, PSTR("AUTO_EXTRACT")) == 0) next = SensorMode::AUTO_EXTRACT;
   else if (strcmp_P(value, PSTR("FLOAT_ONLY")) == 0) next = SensorMode::FLOAT_ONLY;
   else return;
-  if (next != sensorMode) { sensorMode = next; resetAcquisition(); }
+  if (next != sensorMode) { sensorMode = next; resetAcquisition(false); }
   modeStatusPending = true;
 }
 
 float calculatePH(float adc) {
   if (!runtimePhValid || !isfinite(adc)) return NAN;
   // Anchored form passes through both measured points without rounding ADC first.
-  return PH_BUFFER_686 + (adc - runtimePh686) * runtimePhScale;
+  // Piecewise linear 3-point fit: each segment passes through its buffers.
+  // ADC decreases as pH increases. No polynomial overshoot or extra filtering.
+  const float slope = runtimePhPoints == 3 && adc > runtimePh686 ? runtimePhAcidScale : runtimePhScale;
+  return runtimePhAnchorValue + (adc - runtimePhAnchorADC) * slope;
 }
 
 void serviceAnalog(uint32_t now) {
@@ -1157,7 +1171,7 @@ void serviceAnalog(uint32_t now) {
   }
 }
 void serviceTemperature(uint32_t now) {
-  if (!sensorEnabled(TEMP_BIT) || sensorMode != SensorMode::NORMAL) return;
+  if (!sensorEnabled(TEMP_BIT)) return;
   if (tempPending) {
     if (uint32_t(now-tempStartedAt) < TEMP_CONVERSION_MS) return;
     waterTempC = waterTempSensor.getTempC(temperatureAddress);
@@ -1211,7 +1225,6 @@ void sendSerialToRaspberryPi() {
   packet.beginPacket();
   packet.print(F("MegaInput,Temp:"));
   if (!sensorEnabled(TEMP_BIT)) packet.print(F("DISABLED"));
-  else if (sensorMode != SensorMode::NORMAL) packet.print(F("PAUSED"));
   else if (!tempReady) packet.print(F("WAITING"));
   else if (!tempValid) packet.print(F("ERROR"));
   else packet.print(waterTempC, 2);
@@ -1299,7 +1312,8 @@ namespace Policy {
 struct Range { uint16_t low, high; uint8_t category; };
 struct Settings {
   uint32_t revision, confirmMs, settleMs;
-  float low, high, warningLow, warningHigh, adc686, adc918, fanThreshold;
+  float low, high, warningLow, warningHigh, adc401, adc686, adc918, fanThreshold;
+  uint8_t phPoints, phPair; // Pair: 0=6.86/9.18, 1=4.01/6.86, 2=4.01/9.18.
   bool maintenance;
   uint8_t count;
   Range ranges[20];
@@ -1307,8 +1321,16 @@ struct Settings {
 Settings active{}, pending{};
 bool configured = false, staging = false, autoMode = false;
 uint32_t receivedRows = 0;
-uint8_t quality = 0; // 0 none, 1 turbidity, 2 pH.
+uint8_t quality = 0; // Bit 0 turbidity, bit 1 pH; both causes may remain active.
 uint8_t levelCorrection = 0; // 0 none, 1 overflow, 2 low.
+constexpr uint32_t NORMAL_ALLOWANCE_MS = 3000;
+bool normalClock = false;
+uint32_t normalSince = 0;
+bool normalAllowanceDone(bool normal, uint32_t now) {
+  if (!normal) { normalClock = false; return false; }
+  if (!normalClock) { normalClock = true; normalSince = now; }
+  return uint32_t(now-normalSince) >= NORMAL_ALLOWANCE_MS;
+}
 uint8_t phCandidate = 0;
 bool turbCandidate = false;
 uint32_t phSince = 0, turbSince = 0;
@@ -1347,7 +1369,7 @@ void report(uint32_t now) {
   link.print(F(",MODE:"));
   link.print(MegaInput::sensorMode == MegaInput::SensorMode::NORMAL ? F("NORMAL") :
              MegaInput::sensorMode == MegaInput::SensorMode::AUTO_QUALITY ? F("AUTO_QUALITY") : F("FLOAT_ONLY"));
-  link.print(F(",SETTLING:")); link.print(settling && quality != 2 ? 1 : 0);
+  link.print(F(",SETTLING:")); link.print(settling && !(quality & 2) ? 1 : 0);
   link.print(F(",REMAIN:"));
   if (!settlingClock) link.println(-1);
   else link.println(uint32_t(now-settlingSince) >= active.settleMs ? 0UL :
@@ -1368,8 +1390,7 @@ void change(bool extract, bool insert, const char *next, uint32_t now) {
   if (MegaInput::sensorMode != desired) {
     bool qualityChange = MegaInput::sensorMode == MegaInput::SensorMode::FLOAT_ONLY || desired == MegaInput::SensorMode::FLOAT_ONLY;
     MegaInput::sensorMode = desired;
-    if (qualityChange) MegaInput::resetAcquisition();
-    else { MegaInput::tempPending=false; MegaInput::tempReady=false; MegaInput::tempValid=false; }
+    if (qualityChange) MegaInput::resetAcquisition(false);
     MegaInput::modeStatusPending = true;
   }
   if (extract || insert) { settling = true; settlingClock = false; }
@@ -1377,14 +1398,14 @@ void change(bool extract, bool insert, const char *next, uint32_t now) {
 }
 void waterChangeFinish(const char *status, const char *reason, bool resume) {
   wcPhase = 0; wcStatus = status; wcReason = reason;
-  autoMode = resume; resetQuality(); levelCorrection = 0;
+  autoMode = resume; resetQuality(); levelCorrection = 0; normalClock = false;
   settling = true; settlingClock = false;
   change(false,false,resume ? "idle":"manual_idle",millis());
   waterChangeReport();
 }
 void manual() {
   if (wcPhase) waterChangeFinish("CANCELLED","OPERATOR",false);
-  autoMode = false; resetQuality(); levelCorrection = 0;
+  autoMode = false; resetQuality(); levelCorrection = 0; normalClock = false;
 }
 void stopped() {
   if (wcPhase) waterChangeFinish("CANCELLED","SYSTEM_OFF",false);
@@ -1392,6 +1413,10 @@ void stopped() {
   change(false,false,"manual_idle",millis());
 }
 void ack(uint32_t revision) { link.print(F("AquaPiMega,CFG:")); link.println(revision); }
+bool validPhPair(float lowerADC, float upperADC) {
+  return isfinite(lowerADC) && isfinite(upperADC) && lowerADC >= 1 && lowerADC <= 1022 &&
+    upperADC >= 1 && upperADC <= 1022 && lowerADC-upperADC >= 20;
+}
 void configure(const char *message) {
   uint32_t revision, n;
   if (integer(message,"BEGIN:",revision)) {
@@ -1408,10 +1433,29 @@ void configure(const char *message) {
         !integer(message,"CONF:",next.confirmMs,600000) || !integer(message,"SETTLE:",next.settleMs,600000) ||
         !integer(message,"MAINT:",n,1)) return;
     next.maintenance = n;
+    // Legacy packets default to the original 6.86/9.18 pair.
+    next.phPoints = 2;
+    char field[28];
+    if (MegaOutput::copyFieldValue(message,"PC:",field,sizeof(field))) {
+      if (!integer(message,"PC:",n,3) || n < 2) return;
+      next.phPoints = n;
+    }
+    if (MegaOutput::copyFieldValue(message,"PP:",field,sizeof(field))) {
+      if (!integer(message,"PP:",n,2)) return;
+      next.phPair = n;
+    }
+    if (next.phPoints == 3 && next.phPair != 0) return;
+    if ((next.phPoints == 3 || next.phPair != 0) &&
+        !number(message,"A4:",next.adc401,1,1022)) return;
+    if (next.phPoints == 3) {
+      if (!validPhPair(next.adc401,next.adc686) || !validPhPair(next.adc686,next.adc918)) return;
+    } else if (next.phPair == 1) {
+      if (!validPhPair(next.adc401,next.adc686)) return;
+    } else if (next.phPair == 2) {
+      if (!validPhPair(next.adc401,next.adc918)) return;
+    } else if ((next.adc686 || next.adc918) && !validPhPair(next.adc686,next.adc918)) return;
     if (!integer(message,"ROWS:",n,20) || !n) return;
     next.count = n;
-    if ((next.adc686 || next.adc918) &&
-        (next.adc686 < 1 || next.adc686 > 1022 || next.adc918 < 1 || next.adc918 > 1022 || next.adc686-next.adc918 < 20)) return;
     pending = next; staging = true;
   } else if (integer(message,"ROW:",revision) && staging && revision == pending.revision) {
     uint32_t index, low, high, category;
@@ -1430,17 +1474,30 @@ void configure(const char *message) {
     }
     if (next != 1024) return;
     active = pending; configured = true; staging = false;
-    MegaInput::runtimePh686 = active.adc686 ? active.adc686 : MegaInput::PH_ADC_686;
-    MegaInput::runtimePh918 = active.adc918 ? active.adc918 : MegaInput::PH_ADC_918;
-    MegaInput::runtimePhValid = MegaInput::runtimePh686 > 0 && MegaInput::runtimePh918 > 0 &&
-      MegaInput::runtimePh686-MegaInput::runtimePh918 >= 20;
-    MegaInput::runtimePhScale = MegaInput::runtimePhValid ? 2.32f/(MegaInput::runtimePh918-MegaInput::runtimePh686) : 0;
+    // Precompute slopes only when calibration changes; sample-time math is one multiply/add.
+    const bool codeFallback = active.phPoints == 2 && active.phPair == 0 && !active.adc686 && !active.adc918;
+    MegaInput::runtimePh686 = codeFallback ? MegaInput::PH_ADC_686 : active.adc686;
+    MegaInput::runtimePh918 = codeFallback ? MegaInput::PH_ADC_918 : active.adc918;
+    MegaInput::runtimePh401 = active.adc401;
+    MegaInput::runtimePhPoints = active.phPoints;
+    MegaInput::runtimePhPair = active.phPair;
+    const float anchorADC = active.phPair ? active.adc401 : MegaInput::runtimePh686;
+    const float endADC = active.phPair == 1 ? MegaInput::runtimePh686 : MegaInput::runtimePh918;
+    const float anchorPH = active.phPair ? 4.01f : 6.86f;
+    const float endPH = active.phPair == 1 ? 6.86f : 9.18f;
+    MegaInput::runtimePhValid = validPhPair(anchorADC,endADC);
+    MegaInput::runtimePhAnchorADC = anchorADC;
+    MegaInput::runtimePhAnchorValue = anchorPH;
+    MegaInput::runtimePhScale = MegaInput::runtimePhValid ? (endPH-anchorPH)/(endADC-anchorADC) : 0;
+    MegaInput::runtimePhAcidScale = active.phPoints == 3 ? (6.86f-4.01f)/(active.adc686-active.adc401) : 0;
     MegaOutput::coolerOnThresholdC = active.fanThreshold;
     MegaOutput::coolerChangePending = false;
-    settling = true; settlingClock = false; MegaInput::resetAcquisition();
+    settling = true; settlingClock = false; normalClock = false; MegaInput::resetAcquisition(false);
     ack(revision);
     link.print(F("MegaInputStatus,PHCAL:RUNTIME_RAM,CALIBRATED:"));
-    link.println(MegaInput::runtimePhValid ? 1 : 0);
+    link.print(MegaInput::runtimePhValid ? 1 : 0);
+    link.print(F(",POINTS:")); link.print(MegaInput::runtimePhPoints);
+    link.print(F(",PAIR:")); link.println(MegaInput::runtimePhPair);
   }
 }
 uint8_t clarity() {
@@ -1479,7 +1536,7 @@ void waterChangeCommand(const char *message, const char *action) {
       !waterChangeFloatsValid() || !MegaInput::normalTriggered || MegaInput::upperTriggered) {
     wcStatus="REJECTED"; wcReason="NOT_READY"; waterChangeReport(); return;
   }
-  resetQuality(); levelCorrection=0;
+  resetQuality(); levelCorrection=0; normalClock=false;
   wcDrainMs=drain*1000UL; wcRefillMs=refill*1000UL; wcSince=millis();
   wcPhase=1; wcStatus="DRAINING"; wcReason="SCHEDULE";
   change(true,false,"scheduled_drain",wcSince);
@@ -1492,15 +1549,15 @@ void serviceWaterChange(uint32_t now) {
     waterChangeFinish("FAILED","FLOATS_OR_CONFIG",false); return;
   }
   if (MegaInput::upperTriggered) {
-    waterChangeFinish("FAILED","UPPER_FLOAT",false); return;
+    waterChangeFinish("FAILED","UPPER_FLOAT",true); return;
   }
   if (wcPhase==1 && (!MegaInput::lowTriggered || uint32_t(now-wcSince)>=wcDrainMs)) {
-    wcPhase=2; wcSince=now; wcStatus="REFILLING";
+    wcPhase=2; wcSince=now; wcStatus="REFILLING"; normalClock=false;
     change(false,true,"scheduled_refill",now); waterChangeReport();
   }
   if (wcPhase==2) {
-    if (MegaInput::normalTriggered) waterChangeFinish("COMPLETE","NORMAL_LEVEL",true);
-    else if (uint32_t(now-wcSince)>=wcRefillMs) waterChangeFinish("FAILED","REFILL_TIMEOUT",false);
+    if (uint32_t(now-wcSince)>=wcRefillMs) waterChangeFinish("FAILED","REFILL_TIMEOUT",false);
+    else if (normalAllowanceDone(MegaInput::normalTriggered,now)) waterChangeFinish("COMPLETE","NORMAL_LEVEL",true);
   }
 }
 void service(uint32_t now) {
@@ -1529,24 +1586,26 @@ void service(uint32_t now) {
   bool phValid = isfinite(ph) && ph>=0 && ph<=14;
   bool phBad = phValid && (ph < active.warningLow || ph > active.warningHigh);
   uint8_t phCritical = !settling && phValid ? (ph<=active.low ? 1 : ph>=active.high ? 2 : 0) : 0;
-  if (quality == 1 && (c == 255 || c>=3)) quality=0;
-  if (quality == 2 && !phBad) quality=0;
+  if ((quality & 1) && (c == 255 || c>=3)) quality &= ~1;
+  if ((quality & 2) && !phBad) quality &= ~2;
   if (c == 0) {
     if (!turbCandidate) { turbCandidate=true; turbSince=now; }
-    if (uint32_t(now-turbSince)>=active.confirmMs) quality=1;
+    if (uint32_t(now-turbSince)>=active.confirmMs) quality |= 1;
   } else turbCandidate=false;
   if (phCritical) {
     if (phCandidate != phCritical) { phCandidate=phCritical; phSince=now; }
-    if (!quality && uint32_t(now-phSince)>=active.confirmMs) quality=2;
+    if (uint32_t(now-phSince)>=active.confirmMs) quality |= 2;
   } else phCandidate=0;
-  // Critical-only start: Low warning alone cannot begin an idle refill.
-  if (upper) levelCorrection=1;
-  else if (veryLow || (low && quality)) levelCorrection=2;
-  else if (normal || (low && levelCorrection==1)) levelCorrection=0;
-  else if (levelCorrection==1 && !MegaInput::sensorEnabled(MegaInput::NORMAL_BIT) &&
-           MegaInput::sensorEnabled(MegaInput::UPPER_BIT) && !MegaInput::upperTriggered) levelCorrection=0;
+  // Level correction has priority over quality correction and its Normal allowance.
+  // Continue the same direction for 3 seconds of Normal; never extend into Low/Overflow.
+  if (upper) { levelCorrection=1; normalClock=false; }
+  else if (veryLow || low) { levelCorrection=2; normalClock=false; }
+  else if (normal && levelCorrection) {
+    if (normalAllowanceDone(true,now)) { levelCorrection=0; normalClock=false; }
+  } else { levelCorrection=0; normalClock=false; }
+  if (levelCorrection==2 && !MegaInput::sensorEnabled(MegaInput::NORMAL_BIT)) levelCorrection=0;
   if (quality) change(levelCorrection!=2,levelCorrection!=1,
-                      quality==1 ? "auto_extract_turbidity":"auto_extract_ph",now);
+                      (quality & 1) ? "auto_extract_turbidity":"auto_extract_ph",now);
   else if (levelCorrection==1) {
     if (!strcmp(mode,"auto_insert") && !MegaInput::sensorEnabled(MegaInput::NORMAL_BIT))
       change(false,false,"idle",now);
@@ -1579,7 +1638,7 @@ void stopEverything() {
 }
 void identity(bool boot) {
   link.print(boot ? F("AquaPiMega,READY:1") : F("AquaPiMega,STATUS:1"));
-  link.print(F(",PROTOCOL:1,FEEDER:V3,FANCTRL:V1,WATERCHANGE:V1,SYSTEMCTRL:V1,SYSTEM:"));
+  link.print(F(",PROTOCOL:1,PHCAL:V3,FEEDER:V3,FANCTRL:V1,WATERCHANGE:V1,SYSTEMCTRL:V1,SYSTEM:"));
   link.print(MegaOutput::systemEnabled ? F("ON") : F("OFF"));
   link.print(F(",TXDROP:")); link.println(link.dropped);
 }
@@ -1617,14 +1676,14 @@ void dispatch(char *message) {
   }
   if (MegaOutput::copyFieldValue(message,"WATERMODE:",value,sizeof(value))) {
     if (Policy::wcPhase) Policy::waterChangeFinish("CANCELLED","OPERATOR",false);
-    if (!strcmp(value,"AUTO")) { Policy::resetQuality(); Policy::autoMode=true; Policy::levelCorrection=0; }
+    if (!strcmp(value,"AUTO")) { Policy::resetQuality(); Policy::autoMode=true; Policy::levelCorrection=0; Policy::normalClock=false; }
     else if (!strcmp(value,"MANUAL")) Policy::manual();
     Policy::report(millis()); return;
   }
   if (MegaOutput::copyFieldValue(message,"PUMP:",value,sizeof(value))) Policy::manual();
   if (!strncmp(message,"MEGAINPUT,SENSORS:",17)) {
     if (Policy::wcPhase) Policy::waterChangeFinish("CANCELLED","SENSORS_CHANGED",false);
-    Policy::resetQuality(); Policy::levelCorrection=0;
+    Policy::resetQuality(); Policy::levelCorrection=0; Policy::normalClock=false;
   }
   // The Mega owns acquisition modes while automatic control is selected.
   if (Policy::autoMode && !strncmp(message,"MEGAINPUT,MODE:",14)) return;

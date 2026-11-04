@@ -171,14 +171,16 @@ def test_paused_schedule_cancels_pending():
     assert not port.messages
 
 
-def test_old_pending_does_not_build_backlog():
+def test_pending_feed_waits_beyond_thirty_minutes_then_runs_once():
     port = connected(); item, now = due()
     water_control._state['insertionOn'] = True
     scheduler.process_due_feeding_schedules(now)
     water_control._state['insertionOn'] = False
     scheduler.process_due_feeding_schedules(now + timedelta(minutes=31))
-    assert not port.messages
-    assert config.get_feeding_schedule(item['id'])['lastStatus'] == 'expired'
+    assert len(port.messages) == 1 and 'FEED:CUSTOM' in port.messages[0]
+    scheduler.process_due_feeding_schedules(now + timedelta(minutes=32))
+    assert len(port.messages) == 1
+    assert config.get_feeding_schedule(item['id'])['lastStatus'] == 'sent'
 
 
 def test_write_failure_and_restart_never_replay():

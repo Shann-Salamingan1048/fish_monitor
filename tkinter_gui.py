@@ -1194,26 +1194,6 @@ class FocusedMonitorApp:
         )
         empty_sub.pack(pady=(0, 14))
 
-        info_box = RoundedFrame(empty_center, bg=self.info_box_bg, radius=10,
-                                 border_color=self.info_box_border,
-                                 width=self.alert_wrap_length, height=64)
-        info_box.pack()
-        info_box.grid_propagate(False)
-        info_box.pack_propagate(False)
-        info_inner = tk.Frame(info_box.inner, bg=self.info_box_bg)
-        info_inner.pack(fill="both", expand=True, padx=6)
-        tk.Label(info_inner, text="\u24d8", font=(FONT_STYLE, 13, "bold"),
-                 bg=self.info_box_bg, fg=self.accent_primary).pack(side="left", padx=(2, 8))
-        tk.Label(
-            info_inner,
-            text="Only enabled sensors are evaluated. Disabled, paused or waiting sensors do not confirm water quality.",
-            font=(FONT_STYLE, 10),
-            bg=self.info_box_bg,
-            fg=self.text_main,
-            wraplength=self.alert_wrap_length - 60,
-            justify="left"
-        ).pack(side="left", fill="both", expand=True, pady=8)
-
     def _create_alert_card(self, parent, index):
         frame = RoundedFrame(parent, bg=self.card_color, radius=14,
                               border_color=self.border_color,
