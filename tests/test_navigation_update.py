@@ -61,7 +61,7 @@ def test_slow_snapshot_does_not_block_request_and_coalesces_updates():
     assert not worker.thread.is_alive()
 
 
-@pytest.mark.parametrize('page', ['', 'feeding', 'controls', 'sensors', 'camera', 'graphs', 'settings', 'access'])
+@pytest.mark.parametrize('page', ['', 'feeding', 'water-changes', 'cooling-fan', 'sensors', 'camera', 'graphs', 'settings', 'access'])
 def test_separate_pages_render_with_navigation(page):
     response = flask_app.test_client().get('/' + page)
     assert response.status_code == 200
@@ -122,3 +122,37 @@ def test_notification_change_updates_only_changed_card():
     app._render_alerts([])
     app._render_alerts([first])
     assert app.alert_cards[0]['title'].updates == 2
+
+
+def test_water_and_fan_pages_own_their_controls():
+    client = flask_app.test_client()
+    assert client.get('/controls').location == '/water-changes'
+    for path, present, absent in [
+        ('/water-changes', 'water-schedule-form', 'fan-mode-actions'),
+        ('/cooling-fan', 'fan-mode-actions', 'water-schedule-form'),
+    ]:
+        html = client.get(path).text
+        assert f'id="{present}"' in html and f'id="{absent}"' not in html
+        assert f'href="{path}" aria-current="page"' in html
+        assert 'href="/controls"' not in html
+
+
+def test_login_treats_sql_as_text_and_rejects_malformed_input():
+    client = flask_app.test_client()
+    chosen = "Aqua'Pi-27"
+    admin_credentials.change(config.ADMIN_PIN, chosen, chosen)
+    saved = config.get_db_value('admin_pin_hash')
+    for body in [{"pin": "' OR 1=1 --"}, {"pin": "'; DROP TABLE app_state; --"},
+                 {"pin": ["1234"]}, {"pin": 1234}, {"pin": "9" * 129}, [],
+                 {"pin": chr(0xd800)}]:
+        assert client.post('/api/auth/login', json=body).status_code == 401
+        assert client.get('/api/auth/status').json['role'] == 'audience'
+        assert client.post('/api/water-control', json={'action': 'stop_all'}).status_code == 403
+    assert config.get_db_value('admin_pin_hash') == saved
+    assert client.post('/api/auth/login', json={'pin': chosen}).status_code == 200
+
+
+def test_login_denies_access_if_credentials_cannot_be_read(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, 'DB_FILE', str(tmp_path / 'missing' / 'state.db'))
+    response = flask_app.test_client().post('/api/auth/login', json={'pin': config.ADMIN_PIN})
+    assert response.status_code == 401

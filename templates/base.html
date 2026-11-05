@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AquaPi · {{ title }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=20">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=31">
 </head>
 <body class="audience-mode" data-page="{{ page }}">
 <div class="dashboard app-shell">
@@ -13,21 +13,21 @@
     <a id="role-text" class="access-link" href="/access">Viewer · Sign in</a>
   </header>
   <nav class="app-nav" aria-label="Main navigation">
-  {% for key, label, path in [('index','Overview','/'),('feeding','Feeding','/feeding'),('controls','Controls','/controls'),('sensors','Sensors','/sensors'),('camera','Camera','/camera'),('graphs','Graphs','/graphs'),('settings','Settings','/settings')] %}
+  {% for key, label, path in [('index','Overview','/'),('feeding','Feeding','/feeding'),('water','Water Changes','/water-changes'),('fan','Cooling Fan','/cooling-fan'),('sensors','Sensors','/sensors'),('camera','Camera','/camera'),('graphs','Graphs','/graphs'),('settings','Settings','/settings')] %}
     <a href="{{ path }}" {% if page == key %}aria-current="page"{% endif %}>{{ label }}</a>
   {% endfor %}
   {% if developer_visible %}<a id="developer-nav" href="/developer" {% if page == 'developer' %}aria-current="page"{% endif %}>Developer option</a>{% endif %}
   </nav>
   <main id="main-content" class="page-content page-{{ page }}">
     <div class="page-heading"><h1>{{ title }}</h1></div>
-    {% if page in ['feeding','controls','sensors','camera','settings'] %}
+    {% if page in ['feeding','water','fan','sensors','camera','settings'] %}
     <p class="access-note" data-admin-hint><a href="/access">Sign in</a> to use controls.</p>
     {% endif %}
     <p id="sensor-recovery-status" class="control-note recovery-note" role="status" hidden></p>
     {% block content %}{% endblock %}
   </main>
 </div>
-<script src="{{ url_for('static', filename='script.js') }}?v=20"></script>
+<script src="{{ url_for('static', filename='script.js') }}?v=31"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

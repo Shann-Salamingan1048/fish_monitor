@@ -9,8 +9,8 @@ with TemporaryDirectory() as directory:
     config.DB_FILE = str(Path(directory) / 'render.db')
     config.init_database()
     client = flask_app.test_client()
-    for name in ('index', 'feeding', 'controls', 'sensors', 'camera', 'graphs', 'settings', 'access'):
+    for name in ('index', 'feeding', 'water-changes', 'cooling-fan', 'sensors', 'camera', 'graphs', 'settings', 'access'):
         response = client.get('/' if name == 'index' else '/' + name)
         assert response.status_code == 200
         Path('/tmp/fish-' + name + '.html').write_text(response.text)
-print('Rendered 8 pages to /tmp/fish-*.html')
+print('Rendered 9 pages to /tmp/fish-*.html')

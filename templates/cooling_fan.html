@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% set page = "fan" %}
+{% set title = "Cooling Fan" %}
+{% block content %}
+<section id="fan-control-panel" class="card fan-controls">
+            <h2>Fan status</h2>
+            <p data-fan-status role="status">Waiting for MegaOutput…</p>
+            <div id="fan-mode-actions" class="feeder-actions" hidden aria-label="Cooling fan mode">
+                <button type="button" class="mode-btn" data-fan-mode="AUTO" onclick="setFanMode('AUTO')" disabled>Auto</button>
+                <button type="button" class="mode-btn" data-fan-mode="ON" onclick="setFanMode('ON')" disabled>Fan on</button>
+                <button type="button" class="mode-btn muted" data-fan-mode="OFF" onclick="setFanMode('OFF')" disabled>Fan off</button>
+            </div>
+            
+            <p id="fan-message" role="status"></p>
+        </section>
+{% endblock %}

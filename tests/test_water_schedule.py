@@ -148,7 +148,7 @@ def test_admin_routes_and_csrf():
     schedule=result.json['schedules'][0]
     assert client.put('/api/water-schedules/'+str(schedule['id']),json={'enabled':False}).status_code==200
     assert client.delete('/api/water-schedules/'+str(schedule['id'])).json['schedules']==[]
-    assert 'Water-change schedule' in client.get('/controls').text
+    assert 'Water-change schedule' in client.get('/water-changes').text
 
 
 def test_gui_save_calls_shared_schedule_service():

@@ -163,7 +163,15 @@ def feeding_page():
 
 @flask_app.route('/controls')
 def controls_page():
-    return render_template('controls.html')
+    return redirect('/water-changes')
+
+@flask_app.route('/water-changes')
+def water_changes_page():
+    return render_template('water_changes.html')
+
+@flask_app.route('/cooling-fan')
+def cooling_fan_page():
+    return render_template('cooling_fan.html')
 
 
 @flask_app.route('/sensors')
@@ -239,8 +247,8 @@ def auth_status():
 
 @flask_app.route("/api/auth/login", methods=["POST"])
 def auth_login():
-    data = request.get_json(force=True)
-    pin = str(data.get("pin", ""))
+    data = request.get_json(silent=True)
+    pin = data.get("pin") if isinstance(data, dict) else None
     with admin_credentials.lock:
         if not admin_credentials.verify(pin):
             admin_sessions.logout()

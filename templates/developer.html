@@ -20,16 +20,22 @@
 </section>
 <form id="calibration-form" class="card settings-form">
   <fieldset id="calibration-fields" disabled>
-    <legend>pH calibration</legend>
-    <label class="calibration-toggle"><input type="checkbox" id="ph-custom"> Use saved pH calibration</label>
-    <label>Calibration method<select id="ph-points"><option value="2">2 points</option><option value="3">3 points · 4.01, 6.86 and 9.18</option></select></label>
-    <label id="ph-pair-field">Buffer pair<select id="ph-pair"><option value="401_686">4.01 and 6.86</option><option value="686_918" selected>6.86 and 9.18</option><option value="401_918">4.01 and 9.18</option></select></label>
-    <label id="ph-acid-field" hidden>ADC in pH 4.01 buffer<input id="adc401" type="number" min="1" max="1022" step="0.01" inputmode="decimal"></label>
-    <div class="field-pair">
-      <label id="ph-neutral-field">ADC in pH 6.86 buffer<input id="adc686" type="number" min="1" max="1022" step="0.01" inputmode="decimal"></label>
-      <label id="ph-basic-field">ADC in pH 9.18 buffer<input id="adc918" type="number" min="1" max="1022" step="0.01" inputmode="decimal"></label>
-    </div>
-    <p class="control-note">Enter the stable ADC reading for each buffer.</p>
+    <legend class="visually-hidden">Calibration settings</legend>
+    <section class="ph-card" aria-labelledby="ph-heading">
+      <div class="ph-heading"><span class="ph-mark" aria-hidden="true">pH</span><h2 id="ph-heading">pH calibration</h2></div>
+      <label class="calibration-toggle"><input type="checkbox" id="ph-custom"> Use saved pH calibration</label>
+      <div class="ph-options">
+        <label>Calibration method<select id="ph-points"><option value="2">2 points</option><option value="3">3 points · 4.01, 6.86 and 9.18</option></select></label>
+        <label id="ph-pair-field">Buffer pair<select id="ph-pair"><option value="401_686">4.01 and 6.86</option><option value="686_918" selected>6.86 and 9.18</option><option value="401_918">4.01 and 9.18</option></select></label>
+      </div>
+      <h3>Buffer readings</h3>
+      <p id="ph-reading-help">Place the probe in each buffer and enter its stable ADC reading.</p>
+      <div class="ph-readings">
+        <label id="ph-acid-field" hidden>pH 4.01 buffer · ADC<input id="adc401" type="number" min="1" max="1022" step="0.01" inputmode="decimal" aria-describedby="ph-reading-help"></label>
+        <label id="ph-neutral-field">pH 6.86 buffer · ADC<input id="adc686" type="number" min="1" max="1022" step="0.01" inputmode="decimal" aria-describedby="ph-reading-help"></label>
+        <label id="ph-basic-field">pH 9.18 buffer · ADC<input id="adc918" type="number" min="1" max="1022" step="0.01" inputmode="decimal" aria-describedby="ph-reading-help"></label>
+      </div>
+    </section>
     <h2>Turbidity calibration</h2>
     <label class="calibration-toggle"><input type="checkbox" id="ntu-calibrated"> Use NTU reference calibration</label>
     <div id="ntu-calibration-panel" hidden>

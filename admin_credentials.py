@@ -1,4 +1,5 @@
 """Persistent Admin PIN changes from the trusted local desktop."""
+import sqlite3
 import threading
 import hmac
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -9,11 +10,23 @@ lock = threading.RLock()
 
 
 def verify(pin):
+    if not isinstance(pin, str) or not 1 <= len(pin) <= 128:
+        return False
+    try:
+        supplied = pin.encode('utf-8')
+    except UnicodeEncodeError:
+        return False
     with lock:
-        saved = config.get_db_value('admin_pin_hash', '')
-        if saved:
-            return check_password_hash(saved, str(pin))
-        return hmac.compare_digest(str(pin).encode(), config.ADMIN_PIN.encode())
+        # Only the application-owned key reaches SQLite. Compare the PIN in Python.
+        try:
+            with config.db_connect() as conn:
+                row = conn.execute('SELECT value FROM app_state WHERE key = ?',
+                                   ('admin_pin_hash',)).fetchone()
+        except sqlite3.Error:
+            return False
+        if row is None:
+            return hmac.compare_digest(supplied, config.ADMIN_PIN.encode())
+        return bool(row[0]) and check_password_hash(row[0], pin)
 
 
 def change(current, new, confirmation):

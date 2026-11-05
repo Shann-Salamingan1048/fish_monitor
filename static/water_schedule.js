@@ -24,13 +24,19 @@
     }
     function render(data) {
         rows=data.schedules;
-        const next=data.nextRun ? new Date(data.nextRun.dateTime).toLocaleString(undefined,{timeZone:data.timezone}) : 'None';
-        $('water-schedule-next').textContent=`Next: ${next} · ${data.timezone}`;
+        const next=data.nextRun ? new Date(data.nextRun.dateTime).toLocaleString(undefined,{timeZone:data.timezone}) : null;
+        $('water-schedule-next').textContent=next ? `Next water change: ${next}` : 'No water change scheduled';
+        $('water-timezone').textContent = `Time zone: ${data.timezone}`;
         const job=data.active || data.last;
         $('water-change-state').textContent=(!data.ready ? 'Connect Mega with the water-change firmware. ' : '')+
             (job ? `${data.active?'Current':'Last'}: ${job.status}${job.reason?' · '+job.reason:''}` : 'No water changes yet.');
         const list=$('water-schedule-list'); list.replaceChildren();
-        if(!rows.length) list.textContent='No water-change schedules.';
+        if (!rows.length) {
+            const empty = document.createElement('div');
+            empty.className = 'schedule-empty';
+            empty.textContent = 'No water-change schedules yet.';
+            list.append(empty);
+        }
         for(const row of rows) {
             const item=document.createElement('article'); item.className='feeding-schedule-item';
             const detail=document.createElement('div'); detail.className='schedule-details';

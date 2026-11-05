@@ -1546,8 +1546,8 @@ i.fa-camera::before { content: '▣'; }
 #admin-login-panel { gap: 14px; margin-top: 18px; }
 #admin-login-panel button { justify-self: start; }
 #mode-message:empty, #feeder-message:empty, #camera-feeder-message:empty, #sensor-sync-status:empty, .sensor-control-row p:empty { display: none; }
-.page-controls #admin-control-panel { gap: 16px; }
-.page-controls .admin-control-heading { margin-bottom: 0; }
+.page-water #admin-control-panel { gap: 16px; }
+.page-water .admin-control-heading { margin-bottom: 0; }
 .page-camera .camera-frame { max-height: 65vh; }
 .page-camera .camera-frame img { object-fit: contain; max-height: 65vh; }
 .page-camera .controls-card { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
@@ -1604,3 +1604,36 @@ i.fa-camera::before { content: '▣'; }
 #calibration-fields h2 { margin: 24px 0 12px; }
 .calibration-row input, .calibration-row select { border: 1px solid #c9d7e4; border-radius: 8px; background: #fff; color: #15364d; font: inherit; }
 .calibration-row button { padding: 10px 12px; border: 1px solid #d1dce6; border-radius: 8px; background: #f4f7fa; color: #714251; cursor: pointer; }
+
+/* Water schedules share the feeding page's form, list and summary styles. */
+.water-icon, .ph-mark { color: white; background: #087e91; }
+#water-schedule-form { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#water-schedule-form label { min-width: 0; }
+#water-schedule-form .control-note { grid-column: 1 / -1; margin: 0; }
+#water-schedule-form .calibration-actions { grid-column: 1 / -1; margin: 0; }
+#water-schedule .feeding-schedule-item { grid-template-columns: minmax(0, 1fr) auto; }
+.water-run-status { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; border-top: 1px solid #d7e5ea; margin-top: 20px; padding-top: 18px; }
+.water-run-status h3, .water-run-status p { margin: 0; }
+.water-run-status h3 { font-size: 1rem; margin-bottom: 4px; }
+.water-run-status .control-note { flex-basis: 100%; }
+.water-run-status button { margin-left: auto; }
+#calibration-form { width: 100%; }
+.ph-card { border: 1px solid #b9ddd8; border-radius: 16px; padding: clamp(14px, 3vw, 24px); background: linear-gradient(135deg, #f1fcf8, #f1f9fc); }
+.ph-heading { display: flex; align-items: center; gap: 12px; }
+.ph-mark { display: grid; place-items: center; border-radius: 10px; width: 38px; height: 38px; font-weight: 700; }
+#calibration-fields .ph-heading h2 { margin: 0; }
+.ph-card h3 { font-size: 1rem; margin: 20px 0 4px; }
+.ph-card p { margin: 0 0 12px; font-size: .9rem; }
+.ph-options, .ph-readings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr)); gap: 12px; }
+.ph-options label, .ph-readings label { display: grid; gap: 6px; font-size: .88rem; font-weight: 600; color: #284a5a; }
+.ph-card select, .ph-card input[type=number] { width: 100%; min-width: 0; min-height: 44px; padding: 8px 12px; font: inherit; border-radius: 9px; border: 1px solid #aabfc9; background: white; color: #17364a; }
+.ph-card :focus-visible, #water-schedule :focus-visible { outline: 3px solid #087e91; outline-offset: 2px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 850px) {
+  #water-schedule-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #water-schedule .schedule-admin-actions { grid-column: 1 / -1; }
+}
+@media (max-width: 520px) {
+  #water-schedule-form, .ph-options, .ph-readings { grid-template-columns: 1fr; }
+  .water-run-status button { margin-left: 0; }
+}

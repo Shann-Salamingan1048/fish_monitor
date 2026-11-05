@@ -37,4 +37,4 @@ View live ADC and calibrated NTU together. Choose ADC or NTU clarity ranges, add
 
 ## Scheduled water changes
 
-Create weekly or everyday drain/refill schedules in Web → Controls → Water-change schedule, or GUI → Controls & settings → Water pumps → Water-change schedule. Both use the same database. This feature requires the updated combined Mega sketch. See `WATER_CHANGE_SCHEDULE.md` for setup, durations, float protection and skipped-run behavior.
+Create weekly or everyday drain/refill schedules in Web → Water Changes → Water-change schedule, or GUI → Controls & settings → Water pumps → Water-change schedule. Both use the same database. This feature requires the updated combined Mega sketch. See `WATER_CHANGE_SCHEDULE.md` for setup, durations, float protection and skipped-run behavior.

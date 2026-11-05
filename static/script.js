@@ -248,7 +248,7 @@ function setRoleUI(role, servo) {
     const feederAccess = document.getElementById("feeder-access-hint");
     if (feederAccess) feederAccess.hidden = isAdmin;
 
-    const fanPanel = document.getElementById('fan-control-panel');
+    const fanPanel = document.getElementById('fan-mode-actions');
     if (fanPanel) fanPanel.hidden = !isAdmin;
     renderFan(fanState);
     if (latestFeeder) renderFeeder(latestFeeder);

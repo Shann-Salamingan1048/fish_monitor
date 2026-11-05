@@ -3,7 +3,7 @@ const fs=require('fs'), assert=require('assert'), path=require('path'), {JSDOM}=
 const script=fs.readFileSync(path.join(__dirname,'../static/script.js'),'utf8');
 const tick=()=>new Promise(r=>setTimeout(r,30));
 (async()=>{
- for(const name of ['index','feeding','controls','sensors','camera','graphs','settings','access']){
+ for(const name of ['index','feeding','water-changes','cooling-fan','sensors','camera','graphs','settings','access']){
   const dom=new JSDOM(fs.readFileSync('/tmp/fish-'+name+'.html','utf8'),{url:'http://localhost:5000/'+name,runScripts:'outside-only'});
   const w=dom.window,d=w.document,calls=[],errors=[];
   w.addEventListener('error',e=>errors.push(e.message));w.console.error=(...args)=>errors.push(args.join(' '));w.alert=m=>errors.push(m);
@@ -27,7 +27,7 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
    return{ok:true,json:async()=>payload()};
   };
   w.eval(script);await tick();
-  assert.equal(d.querySelectorAll('.app-nav a').length,7);
+  assert.equal(d.querySelectorAll('.app-nav a').length,8);
   for(const[id,page]of [['sensor-control-rows','sensors'],['manual-feed-cycles','feeding'],['phCriticalHighLimit','settings']])assert.equal(d.querySelectorAll('#'+id).length,name===page?1:0);
   assert(!d.getElementById('turbidity-adc'));assert(!d.getElementById('turbidityLimit'));
   assert([...d.querySelectorAll('.sensor-control-row button,[data-fan-mode]')].every(b=>b.disabled));
@@ -49,8 +49,10 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
    d.getElementById('feeding-day').value='7';d.getElementById('feeding-time').value='08:00';d.getElementById('feeding-cycles').value='4';w.saveFeedingSchedule({preventDefault(){}});await tick();
    assert.deepEqual(JSON.parse(calls.find(([u,o])=>u==='/api/feeding-schedules'&&o.method==='POST')[1].body),{day:7,time:'08:00',cycles:4,enabled:true});
   }
-  if(name==='controls'){
+  if(name==='cooling-fan'){
    await w.setFanMode('ON');assert(d.querySelector('[data-fan-status]').textContent.includes('Starting'));fan={...fan,confirmed:true,on:true};w.renderFan(fan);assert(d.querySelector('[data-fan-status]').textContent.includes('Fan ON'));
+  }
+  if(name==='water-changes'){
    w.sendWaterAction('both_start');await tick();assert.deepEqual(JSON.parse(calls.find(([u,o])=>u==='/api/water-control'&&o.method==='POST')[1].body),{action:'both_start'});
    for(const action of['extract_stop','insert_stop'])assert(d.querySelector(`[onclick="sendWaterAction('${action}')"]`));
   }
@@ -73,5 +75,5 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
   }
   assert.equal(errors.length,0,name+': '+errors.join('\n'));w.close();
  }
- console.log('All 8 pages passed DOM checks: navigation, role protection, settings, units, sensors, fan/pumps, schedules and custom feeding status.');
+ console.log('All 9 pages passed DOM checks: navigation, role protection, settings, units, sensors, fan/pumps, schedules and custom feeding status.');
 })().catch(e=>{console.error(e);process.exit(1)});

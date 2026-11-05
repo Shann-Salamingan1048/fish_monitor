@@ -11,7 +11,7 @@ Water schedules require this firmware's `WATERCHANGE:V1` support. Older firmware
 
 ## Where to configure
 
-- **Web:** Controls → Water-change schedule. Sign in as Admin to add, edit, pause, enable or delete schedules.
+- **Web:** Water Changes → Water-change schedule. Sign in as Admin to add, edit, pause, enable or delete schedules.
 - **GUI:** Controls & settings → Water pumps → Water-change schedule.
 
 Both interfaces edit the same saved schedules. Select Monday–Sunday or **Every day**, a time, a drain duration (1–600 seconds), and a refill timeout (1–1800 seconds). The displayed timezone is the existing scheduling timezone, normally `Asia/Manila`. Choose durations after measuring/testing pump flow with the installed tubing; seconds do not specify a volume or a percentage.

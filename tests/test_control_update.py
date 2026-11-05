@@ -91,7 +91,7 @@ def test_pending_daily_occurrence_not_overwritten_next_day():
 
 def test_removed_notice_text_is_absent_from_gui_and_web():
     root=Path(__file__).resolve().parents[1]
-    for name in ['tkinter_gui.py','local_controls.py','templates/index.html','templates/controls.html','static/script.js']:
+    for name in ['tkinter_gui.py','local_controls.py','templates/index.html','templates/water_changes.html','templates/cooling_fan.html','static/script.js']:
         text=(root/name).read_text().lower()
         assert 'only enabled sensors are evaluated' not in text
         assert 'only critical ph and very cloudy' not in text

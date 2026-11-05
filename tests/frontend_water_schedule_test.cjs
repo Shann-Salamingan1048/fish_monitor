@@ -2,7 +2,7 @@
 const fs=require('fs'),path=require('path'),assert=require('assert'),{JSDOM}=require('jsdom');
 const tick=()=>new Promise(r=>setTimeout(r,30));
 (async()=>{
- const dom=new JSDOM(fs.readFileSync('/tmp/fish-controls.html','utf8'),{url:'http://localhost/controls',runScripts:'outside-only'});
+ const dom=new JSDOM(fs.readFileSync('/tmp/fish-water-changes.html','utf8'),{url:'http://localhost/water-changes',runScripts:'outside-only'});
  const w=dom.window,d=w.document,$=id=>d.getElementById(id),calls=[],errors=[];
  w.addEventListener('error',e=>errors.push(e.message));w.confirm=()=>true;
  let poll;w.setTimeout=fn=>{poll=fn;return 1};w.clearTimeout=()=>{};
