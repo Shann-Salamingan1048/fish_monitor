@@ -2,21 +2,22 @@
 {% set page = "developer" %}
 {% set title = "Developer option" %}
 {% block content %}
+<nav class="section-links" aria-label="Developer sections"><a href="#sensor-controls">Sensors</a><a href="#calibration-form">Calibration</a></nav>
+<section id="sensor-controls-mount"></section>
 <section class="card settings-form">
   <h2>Sensor calibration</h2>
-  <p class="control-note">Calibration is saved on this Pi. No Mega upload required.</p>
   <p id="calibration-mode" role="status"></p>
   <div class="calibration-actions">
     <button type="button" id="calibration-start" class="mode-btn">Start calibration</button>
     <button type="button" id="calibration-finish" class="mode-btn">Finish calibration</button>
   </div>
-  <p class="control-note">Quality correction pauses during calibration. Return probes to the aquarium before finishing.</p>
+  <p class="control-note">Return probes to the aquarium before finishing.</p>
   <div class="calibration-live" aria-live="off">
     <span>pH ADC: <strong id="live-ph-adc">—</strong></span>
     <span>Turbidity ADC: <strong id="live-turbidity-adc">—</strong></span>
     <span>Turbidity NTU: <strong id="live-turbidity-ntu">—</strong></span>
   </div>
-  <small id="adc-note">Readings appear when the sensors are enabled and sampling.</small>
+  <small id="adc-note">Waiting for sensor readings.</small>
 </section>
 <form id="calibration-form" class="card settings-form">
   <fieldset id="calibration-fields" disabled>
@@ -42,7 +43,6 @@
       <p class="control-note">Add at least two known-NTU references and their stable ADC readings.</p>
       <div id="ntu-points" class="calibration-ranges"></div>
       <button id="add-ntu-point" type="button" class="mode-btn">Add reference point</button>
-      <p class="control-note">NTU is estimated between your reference points.</p>
     </div>
     <h3>Clarity ranges</h3>
     <label>Range unit<select id="turbidity-unit"><option value="ADC">ADC</option><option value="NTU">NTU</option></select></label>
@@ -55,4 +55,4 @@
   <p id="calibration-message" role="status" aria-live="polite"></p>
 </form>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='developer.js') }}?v=28"></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='developer.js') }}?v=32"></script>{% endblock %}

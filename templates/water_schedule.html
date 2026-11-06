@@ -14,7 +14,7 @@
     <label>Time<input id="water-time" type="time" required></label>
     <label>Drain duration (seconds)<input id="water-drain" type="number" min="1" max="600" step="1" required></label>
     <label>Refill timeout (seconds)<input id="water-refill" type="number" min="1" max="1800" step="1" required></label>
-    <p class="control-note">Use times tested with your pumps. Draining stops early at Low. Refilling stops after 3 seconds at Normal or when the timeout expires. Busy, paused, or missed runs are skipped.</p>
+    
     <div class="calibration-actions"><button type="submit" id="water-save" class="mode-btn">Add schedule</button><button type="button" id="water-cancel" class="mode-btn muted" hidden>Cancel edit</button></div>
   </form>
   <p id="water-schedule-message" class="schedule-message" role="status"></p>
@@ -22,6 +22,6 @@
   <div class="water-run-status">
     <div><h3>Water-change status</h3><p id="water-change-state" role="status">Checking controller…</p></div>
     <button type="button" id="water-change-stop" class="mode-btn danger" hidden>Stop water change</button>
-    <p class="control-note">A stop or fault pauses automatic water control. Check the tank before resuming.</p>
+    
   </div>
 </section>

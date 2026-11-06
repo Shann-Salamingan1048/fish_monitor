@@ -3,7 +3,7 @@ const fs=require('fs'), assert=require('assert'), path=require('path'), {JSDOM}=
 const script=fs.readFileSync(path.join(__dirname,'../static/script.js'),'utf8');
 const tick=()=>new Promise(r=>setTimeout(r,30));
 (async()=>{
- for(const name of ['index','feeding','water-changes','cooling-fan','sensors','camera','graphs','settings','access']){
+ for(const name of ['index','feeding','water-changes','cooling-fan','camera','graphs','settings','access','developer']){
   const dom=new JSDOM(fs.readFileSync('/tmp/fish-'+name+'.html','utf8'),{url:'http://localhost:5000/'+name,runScripts:'outside-only'});
   const w=dom.window,d=w.document,calls=[],errors=[];
   w.addEventListener('error',e=>errors.push(e.message));w.console.error=(...args)=>errors.push(args.join(' '));w.alert=m=>errors.push(m);
@@ -27,8 +27,8 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
    return{ok:true,json:async()=>payload()};
   };
   w.eval(script);await tick();
-  assert.equal(d.querySelectorAll('.app-nav a').length,8);
-  for(const[id,page]of [['sensor-control-rows','sensors'],['manual-feed-cycles','feeding'],['phCriticalHighLimit','settings']])assert.equal(d.querySelectorAll('#'+id).length,name===page?1:0);
+  assert.equal(d.querySelectorAll('.app-nav a').length,7);
+  for(const[id,page]of [['manual-feed-cycles','feeding'],['phCriticalHighLimit','settings']])assert.equal(d.querySelectorAll('#'+id).length,name===page?1:0);
   assert(!d.getElementById('turbidity-adc'));assert(!d.getElementById('turbidityLimit'));
   assert([...d.querySelectorAll('.sensor-control-row button,[data-fan-mode]')].every(b=>b.disabled));
   const before=calls.length;await w.feederAction('feed',3);await w.setFanMode('ON');assert.equal(calls.length,before);
@@ -56,15 +56,19 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
    w.sendWaterAction('both_start');await tick();assert.deepEqual(JSON.parse(calls.find(([u,o])=>u==='/api/water-control'&&o.method==='POST')[1].body),{action:'both_start'});
    for(const action of['extract_stop','insert_stop'])assert(d.querySelector(`[onclick="sendWaterAction('${action}')"]`));
   }
-  if(name==='sensors'){
-   assert.equal(d.querySelectorAll('.sensor-control-row').length,6);await w.toggleSensor('ph');assert.equal(d.querySelector('#sensor-row-ph button').textContent,'Enable');assert(!d.getElementById('sensor-disabled-banner').hidden);
-   await w.toggleSensor('ph');assert.equal(d.querySelector('#sensor-row-ph .sensor-state').textContent,'WAITING');w.renderSensorControls({...state,session:'run2',revision:0});
+  if(name==='developer'){
+   assert.equal(d.querySelectorAll('.sensor-control-row').length,6);
+   await w.toggleSensor('ph');assert.equal(d.querySelector('#sensor-row-ph button').textContent,'Enable');
+   assert(!d.getElementById('sensor-disabled-banner').hidden);
+   await w.toggleSensor('ph');assert.equal(d.querySelector('#sensor-row-ph .sensor-state').textContent,'WAITING');
    role='audience';w.setRoleUI(role);assert([...d.querySelectorAll('.sensor-control-row button')].every(b=>b.disabled));
   }
-  w.setTemperatureUnit('F');assert.equal(w.temperatureText(0),'32 °F');
+  w.setTemperatureUnit('F');assert.equal(w.temperatureText(0),'32.0 °F');
   if(name==='settings'){
    assert.equal(d.getElementById('maxAdminSessions').value,'2');d.getElementById('maxAdminSessions').value='3';
-   assert(d.getElementById('prediction-watch-help').textContent.includes('30 seconds'));
+   assert(d.querySelector('.display-settings #temperature-unit'));
+   assert(!d.querySelector('header #temperature-unit'));
+   assert(!d.getElementById('prediction-watch-help'));
    assert.equal(d.getElementById('tempLimit').value,'86');d.getElementById('tempLimit').value='89.6';await w.loadAuthStatus(false);assert.equal(d.getElementById('tempLimit').value,'89.6');
    d.getElementById('tempLimit').value='86';w.saveLimits();await tick();const saved=JSON.parse(calls.find(([u,o])=>u==='/api/limits'&&o.method==='PUT')[1].body);assert.equal(saved.maxAdminSessions,'3');assert.equal(saved.tempLimit,30);assert.equal(saved.tempCriticalLimit,35);assert.equal(d.getElementById('mode-message').innerText,'Settings saved.');
   }

@@ -17,8 +17,41 @@ int main(){
  cmd("MegaConfig,COMMIT:1");assert(!P::configured); // Missing row cannot arm rules.
  cmd("MegaConfig,ROW:1,I:4,MIN:955,MAX:1023,CAT:4");cmd("MegaConfig,COMMIT:1");assert(P::configured);
  assert(I::calculatePH(900)>6.85f && I::calculatePH(800)<9.19f);
- normal();readings(300,850);step();step(200);
- assert(!O::extractionPumpOn && !O::insertionPumpOn); // Cloudy warning alone.
+ // Test initial triggering independently from a previously latched correction.
+ for (int adc : {100, 300, 600, 900, 1000}) {
+   cmd("MegaOutput,PUMP:STOP_ALL"); cmd("MegaOutput,WATERMODE:AUTO");
+   normal(); readings(adc,850); P::settling=false;
+   step(); step(99); assert(!O::extractionPumpOn && !O::insertionPumpOn);
+   step(1);
+   const bool shouldStart = adc <= 409;
+   assert(O::extractionPumpOn == shouldStart && O::insertionPumpOn == shouldStart);
+ }
+ for (int phADC : {928, 817, 950, 790}) {
+   cmd("MegaOutput,PUMP:STOP_ALL"); cmd("MegaOutput,WATERMODE:AUTO");
+   normal(); readings(900,phADC); P::settling=false;
+   const float ph = I::calculatePH(phADC);
+   const bool critical = ph <= P::active.low || ph >= P::active.high;
+   assert(critical == (phADC == 950 || phADC == 790));
+   step(); step(99); assert(!O::extractionPumpOn);
+   step(1);
+   assert(O::extractionPumpOn == critical && O::insertionPumpOn == critical);
+ }
+ // Warning interrupts an unconfirmed Critical pH candidate.
+ cmd("MegaOutput,PUMP:STOP_ALL"); cmd("MegaOutput,WATERMODE:AUTO");
+ normal(); readings(900,950); P::settling=false; step(); step(99);
+ readings(900,928); step(); step(100); assert(!O::extractionPumpOn);
+ // A brief Cloudy reading must also pass the full confirmation interval.
+ readings(300,850); step(); step(99);
+ readings(600,850); step(); step(100); assert(!O::extractionPumpOn);
+ readings(300,850); step(); step(99); assert(!O::extractionPumpOn);
+ step(1); assert(O::extractionPumpOn && O::insertionPumpOn);
+ // Recovery stays latched through Slightly Cloudy and ends at Clear.
+ readings(600,850); step(); assert(O::extractionPumpOn && O::insertionPumpOn);
+ readings(900,850); step(); assert(!O::extractionPumpOn && !O::insertionPumpOn);
+ cmd("MegaOutput,PUMP:STOP_ALL"); cmd("MegaOutput,WATERMODE:AUTO");
+
+ normal();readings(600,850);step();step(200);
+ assert(!O::extractionPumpOn && !O::insertionPumpOn); // Slightly Cloudy alone does not start correction.
  readings(100,850);step();step(99);assert(!O::extractionPumpOn);
  step(1);assert(O::extractionPumpOn && O::insertionPumpOn);
  step();assert(O::extractionPumpOn && O::insertionPumpOn); // No mode-change oscillation.
@@ -56,5 +89,5 @@ int main(){
  for(int value:samples){fakeMillis+=20;pinInputs[A1]=value;I::serviceAnalog(fakeMillis);}
  assert(I::phRawADC==900 && I::phAverageADC==900);
  assert(I::calculatePH(I::phAverageADC)>6.85f && I::calculatePH(I::phAverageADC)<6.87f);
- std::cout<<"Mega local policy passed: atomic settings, critical-only, confirmation, float priority, settling, disable, manual stop, calibration.\n";
+ std::cout<<"Mega local policy passed: atomic settings, Critical pH, Cloudy/Very Cloudy, confirmation, float priority, settling, disable, manual stop, calibration.\n";
 }

@@ -61,7 +61,7 @@ def test_slow_snapshot_does_not_block_request_and_coalesces_updates():
     assert not worker.thread.is_alive()
 
 
-@pytest.mark.parametrize('page', ['', 'feeding', 'water-changes', 'cooling-fan', 'sensors', 'camera', 'graphs', 'settings', 'access'])
+@pytest.mark.parametrize('page', ['', 'feeding', 'water-changes', 'cooling-fan', 'camera', 'graphs', 'settings', 'access'])
 def test_separate_pages_render_with_navigation(page):
     response = flask_app.test_client().get('/' + page)
     assert response.status_code == 200
@@ -156,3 +156,21 @@ def test_login_denies_access_if_credentials_cannot_be_read(monkeypatch, tmp_path
     monkeypatch.setattr(config, 'DB_FILE', str(tmp_path / 'missing' / 'state.db'))
     response = flask_app.test_client().post('/api/auth/login', json={'pin': config.ADMIN_PIN})
     assert response.status_code == 401
+
+
+def test_sensor_management_is_in_developer_option(monkeypatch):
+    client = flask_app.test_client()
+    monkeypatch.setattr(config, 'DEVELOPER_OPTIONS', False)
+    assert client.get('/sensors').status_code == 404
+    assert client.get('/developer').status_code == 404
+    client.post('/api/auth/login', json={'pin': config.ADMIN_PIN})
+    assert client.put('/api/sensor-controls', json={'enabled': {'ph': False}}).status_code == 404
+    monkeypatch.setattr(config, 'DEVELOPER_OPTIONS', True)
+    assert client.get('/sensors').location == '/developer#sensor-controls'
+    html = client.get('/developer').text
+    assert 'id="sensor-controls-mount"' in html
+    assert 'href="/sensors"' not in html
+    assert client.put('/api/sensor-controls', json={'enabled': {'ph': False}}).status_code == 200
+    client.post('/api/auth/logout')
+    assert client.get('/developer').location == '/access'
+    assert client.put('/api/sensor-controls', json={'enabled': {'ph': True}}).status_code == 403

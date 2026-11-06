@@ -97,7 +97,8 @@ def test_settings_persist_and_restore_after_restart():
     assert config.sensor_data['ph']=='DISABLED'
 
 
-def test_http_auth_validation_and_cross_interface_sync():
+def test_http_auth_validation_and_cross_interface_sync(monkeypatch):
+    monkeypatch.setattr(config, "DEVELOPER_OPTIONS", True)
     viewer=flask_app.test_client()
     assert viewer.put('/api/sensor-controls',json={'enabled':{'ph':False}}).status_code==403
     client=admin()

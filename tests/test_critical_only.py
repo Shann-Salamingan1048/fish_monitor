@@ -69,18 +69,15 @@ class Var:
     def set(self,value):self.value=value
 
 
-def test_gui_settings_choice_updates_header_and_persists():
+def test_gui_card_unit_choice_updates_limits_and_persists():
     from tkinter_gui import FocusedMonitorApp
-    from local_controls import LocalControls
     updates=[]
-    app=SimpleNamespace(temperature_unit='C',temperature_unit_var=Var('Celsius (°C)'),
+    app=SimpleNamespace(temperature_unit='C',temperature_unit_var=Var('C'),
         _last_update=None,controls_window=SimpleNamespace(winfo_exists=lambda:True,
             change_temperature_unit=lambda unit:updates.append(unit)))
-    panel=SimpleNamespace(unit_choice=Var('Fahrenheit (°F)'),
-        on_temperature_unit_change=lambda unit:FocusedMonitorApp.set_temperature_unit(app,unit))
-    LocalControls.select_temperature_unit(panel)
-    assert app.temperature_unit=='F' and app.temperature_unit_var.get()=='Fahrenheit (°F)'
+    FocusedMonitorApp.set_temperature_unit(app, 'F')
+    assert app.temperature_unit=='F' and app.temperature_unit_var.get()=='F'
     assert updates==['F'] and config.get_db_value('gui_temperature_unit')=='F'
-    assert FocusedMonitorApp._format_temp_display(app,30)=='86.00 °F'
-    panel.unit_choice.set('Celsius (°C)');LocalControls.select_temperature_unit(panel)
+    assert FocusedMonitorApp._format_temp_display(app,30)=='86.0 °F'
+    FocusedMonitorApp.set_temperature_unit(app, 'C')
     assert app.temperature_unit=='C' and config.get_db_value('gui_temperature_unit')=='C'

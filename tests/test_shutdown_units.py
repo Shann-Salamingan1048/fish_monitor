@@ -58,8 +58,8 @@ def test_unknown_temperature_is_not_converted_to_number():
         assert units.format_reading(value, 'F') == value
     assert units.format_reading(None, 'F') == '-- °F'
     assert units.format_reading(float('nan'), 'F') == '-- °F'
-    assert units.format_reading(0,'F') == '32.00 °F'
-    assert units.convert_text('Current 30°C. Limit 35°C.', 'F') == 'Current 86°F. Limit 95°F.'
+    assert units.format_reading(0,'F') == '32.0 °F'
+    assert units.convert_text('Current 30°C. Limit 35°C.', 'F') == 'Current 86.0°F. Limit 95.0°F.'
 
 
 def test_desktop_fahrenheit_limit_form_stores_celsius():

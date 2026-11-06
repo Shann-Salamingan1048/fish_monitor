@@ -20,14 +20,12 @@ def format_reading(value, unit='C'):
     try:
         number = to_display(value, unit)
         if math.isfinite(number):
-            return f'{number:.2f} °{unit}'
+            return f'{number:.1f} °{unit}'
     except (TypeError, ValueError):
         pass
     return f'-- °{unit}'
 
 
 def convert_text(text, unit='C'):
-    if unit != 'F':
-        return str(text)
     return re.sub(r'(-?\d+(?:\.\d+)?)\s*°C',
-                  lambda m: f'{to_display(m.group(1), unit):g}°F', str(text))
+                  lambda m: f'{to_display(m.group(1), unit):.1f}°{unit}', str(text))

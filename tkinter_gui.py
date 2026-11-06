@@ -328,14 +328,6 @@ class FocusedMonitorApp:
         )
         self.clock_label.grid(row=1, column=3, sticky="e", padx=(10, 0))
         header.grid_columnconfigure(3, weight=0)
-        unit_frame = tk.Frame(header, bg=self.panel_color)
-        unit_frame.grid(row=2, column=3, sticky='e')
-        tk.Label(unit_frame, text='Temperature ', bg=self.panel_color, fg=self.text_sub).pack(side='left')
-        self.temperature_unit_var = tk.StringVar(value='Fahrenheit (°F)' if self.temperature_unit == 'F' else 'Celsius (°C)')
-        unit_select = ttk.Combobox(unit_frame, textvariable=self.temperature_unit_var,
-                                  values=('Celsius (°C)', 'Fahrenheit (°F)'), state='readonly', width=15)
-        unit_select.pack(side='left')
-        unit_select.bind('<<ComboboxSelected>>', self.change_temperature_unit)
 
         # Values panel
         self.values_panel = self._create_panel(main_frame, "Sensor readings", "Live conditions across your tank")
@@ -1093,6 +1085,19 @@ class FocusedMonitorApp:
                                bg=self._tint(accent), fg=accent)
         pill_label.pack(expand=True)
 
+        if key == 'temp':
+            self.temperature_unit_var = tk.StringVar(value=self.temperature_unit)
+            units = tk.Frame(inner, bg=self.card_color)
+            units.grid(row=3, column=0, sticky='e', padx=4, pady=(2, 4))
+            for unit in ('C', 'F'):
+                tk.Radiobutton(units, text='°' + unit, value=unit,
+                               variable=self.temperature_unit_var, indicatoron=False,
+                               command=self.change_temperature_unit, font=(FONT_STYLE, 10, 'bold'),
+                               bg=self.card_color, fg=self.text_main, selectcolor=self._tint(accent),
+                               activebackground=self._tint(accent), activeforeground=self.text_main,
+                               relief='flat', borderwidth=0, padx=8, pady=4,
+                               cursor='hand2').pack(side='left', padx=2)
+
         self.value_cards[key] = card
         self.value_labels[key] = value_label
         self.status_pills[key] = (pill, accent)
@@ -1268,7 +1273,7 @@ class FocusedMonitorApp:
             self.footer_label.config(text="All sensors disabled • Sensor protections bypassed • Feeding and manual controls available", fg=self.text_sub)
         elif controls['disabled']:
             labels = ', '.join(controls['sensors'][k]['label'] for k in controls['disabled'])
-            self.footer_label.config(text="Disabled: " + labels + " • Controls & settings → Sensors", fg=self.text_sub)
+            self.footer_label.config(text="Disabled sensors: " + labels, fg=self.text_sub)
         else:
             self.footer_label.config(text="Controls & settings for manual actions • Esc exits full screen", fg=self.text_sub)
         self.root.after(1000, self._tick_clock)
@@ -1399,11 +1404,11 @@ class FocusedMonitorApp:
         return "\u2713 Normal"
 
     def change_temperature_unit(self, event=None):
-        self.set_temperature_unit('F' if self.temperature_unit_var.get().startswith('Fahrenheit') else 'C')
+        self.set_temperature_unit('F' if self.temperature_unit_var.get() == 'F' else 'C')
 
     def set_temperature_unit(self, unit):
         self.temperature_unit = 'F' if unit == 'F' else 'C'
-        self.temperature_unit_var.set('Fahrenheit (°F)' if self.temperature_unit == 'F' else 'Celsius (°C)')
+        self.temperature_unit_var.set(self.temperature_unit)
         config.set_db_value('gui_temperature_unit', self.temperature_unit)
         self._last_alert_signature = None
         if self._last_update is not None:
@@ -1729,9 +1734,9 @@ class FocusedMonitorApp:
             unit = '°' + self.temperature_unit
 
         if isinstance(value, (int, float)):
-            parts.append(f"Value: {value:g}{unit}")
+            parts.append(f"Value: {value:.1f}{unit}" if unit in ("°C", "°F") else f"Value: {value:g}{unit}")
         if isinstance(limit, (int, float)):
-            parts.append(f"Limit/target: {limit:g}{unit}")
+            parts.append(f"Limit/target: {limit:.1f}{unit}" if unit in ("°C", "°F") else f"Limit/target: {limit:g}{unit}")
         if alert.get("trend"):
             parts.append(f"Trend: {alert.get('trend')}")
         lasts_seconds = alert.get("lasts_seconds")

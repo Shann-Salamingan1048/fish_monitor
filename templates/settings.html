@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% set page = "settings" %}
-{% set title = "Settings" %}
+{% set title = "System settings" %}
 {% block content %}
+<section class="card settings-form display-settings">
+<h2>Display</h2>
+<label for="temperature-unit">Temperature unit</label>
+<select id="temperature-unit"><option value="C">Celsius (°C)</option><option value="F">Fahrenheit (°F)</option></select>
+</section>
 <section id="admin-limit-panel" class="card settings-form" style="display:none">
 <h2>Alert settings</h2>
 <fieldset><legend>Temperature</legend><div class="field-pair">
@@ -15,13 +20,13 @@
 <fieldset><legend>pH · Critical limits</legend><div class="field-pair">
 <label>Lower<input id="phCriticalLowLimit" type="number" min="0" max="14" step="0.1"></label>
 <label>Upper<input id="phCriticalHighLimit" type="number" min="0" max="14" step="0.1"></label>
-</div><p class="control-note">Critical at or beyond either limit.</p></fieldset>
+</div></fieldset>
 <details><summary>Advanced settings</summary><div class="field-pair">
 <label>Website viewers<input id="maxWebsiteViewers" type="number" min="1" step="1"></label>
 <label>Camera viewers<input id="maxCameraViewers" type="number" min="1" step="1"></label>
-<label>Readings to watch before predicting (seconds)<input id="predictionDelaySeconds" type="number" min="1" step="1" aria-describedby="prediction-watch-help"><small id="prediction-watch-help">Example: 30 checks roughly the last 30 seconds for a trend. It does not delay critical protection.</small></label>
-<label>Keep prediction visible (seconds)<input id="predictionAlertDurationSeconds" type="number" min="1" step="1"></label>
-<label>Maximum signed-in Admin devices<input id="maxAdminSessions" type="number" min="1" step="1" aria-describedby="admin-limit-help"><small id="admin-limit-help">Default: 2. Lowering this signs out the least recently active Admin sessions.</small></label>
+<label>Prediction history (seconds)<input id="predictionDelaySeconds" type="number" min="1" step="1"></label>
+<label>Prediction display time (seconds)<input id="predictionAlertDurationSeconds" type="number" min="1" step="1"></label>
+<label>Maximum signed-in Admin devices<input id="maxAdminSessions" type="number" min="1" step="1"></label>
 </div></details>
 <button id="save-limits" class="mode-btn" type="button">Save settings</button>
 <p id="mode-message" role="status" aria-live="polite"></p>

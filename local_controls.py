@@ -1,7 +1,9 @@
-"""Desktop controls use the same Python services as the browser dashboard."""
+"""Local controls with asynchronous status and command handling."""
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 import webbrowser
+import threading
+import queue
 import config
 import temperature_units
 import feeding_control
@@ -9,8 +11,7 @@ import water_control
 import sensor_control
 import fan_control
 import admin_credentials
-import threading
-import queue
+from gui_snapshot import SnapshotWorker
 
 LIMIT_FIELDS = (
     ('tempLimit', 'Temperature warning (°C)', ('temperature', 'limit')),
@@ -19,8 +20,8 @@ LIMIT_FIELDS = (
     ('phHighLimit', 'Upper', ('ph', 'highLimit')),
     ('phCriticalLowLimit', 'Lower', ('ph', 'criticalLowLimit')),
     ('phCriticalHighLimit', 'Upper', ('ph', 'criticalHighLimit')),
-    ('predictionDelaySeconds', 'Readings to watch before predicting (seconds)', ('predictionDelaySeconds',)),
-    ('predictionAlertDurationSeconds', 'Keep prediction visible (seconds)', ('predictionAlertDurationSeconds',)),
+    ('predictionDelaySeconds', 'Prediction history (seconds)', ('predictionDelaySeconds',)),
+    ('predictionAlertDurationSeconds', 'Prediction display time (seconds)', ('predictionAlertDurationSeconds',)),
     ('maxWebsiteViewers', 'Maximum dashboard viewers', ('maxWebsiteViewers',)),
     ('maxCameraViewers', 'Maximum camera viewers', ('maxCameraViewers',)),
     ('maxAdminSessions', 'Maximum signed-in Admin devices', ('maxAdminSessions',)),
@@ -30,198 +31,235 @@ LIMIT_FIELDS = (
 class LocalControls(tk.Toplevel):
     def __init__(self, parent, schedule_callback, on_temperature_unit_change=None):
         super().__init__(parent)
-        self.temperature_unit = "F" if config.get_db_value("gui_temperature_unit", "C") == "F" else "C"
-        self.limit_labels = {}
+        self.temperature_unit = 'F' if config.get_db_value('gui_temperature_unit', 'C') == 'F' else 'C'
         self.on_temperature_unit_change = on_temperature_unit_change
         self.title('AquaPi • Controls & settings')
-        self.geometry(f'{min(780, self.winfo_screenwidth()-40)}x{min(560, self.winfo_screenheight()-60)}')
+        self.geometry(f'{min(860, self.winfo_screenwidth()-40)}x{min(610, self.winfo_screenheight()-60)}')
         self.minsize(620, 400)
         self.transient(parent)
-        self.message = tk.StringVar(value='Local operator controls. Changes also appear in the web dashboard.')
-        ttk.Label(self, text='Controls & settings', font=('Arial', 18, 'bold')).pack(anchor='w', padx=20, pady=(16, 6))
-        ttk.Label(self, textvariable=self.message, wraplength=710).pack(anchor='w', padx=20, pady=(0, 12))
-        tabs = ttk.Notebook(self)
-        tabs.pack(fill='both', expand=True, padx=16, pady=(0, 12))
-        self.tabs = {}
-        for title in ('Feeding', 'Water pumps', 'Fan', 'Sensors', 'Camera', 'Display', 'Alert settings', 'Admin PIN'):
-            page = ttk.Frame(tabs)
-            tabs.add(page, text=title)
-            canvas = tk.Canvas(page, highlightthickness=0)
-            scroll = ttk.Scrollbar(page, orient='vertical', command=canvas.yview)
-            canvas.configure(yscrollcommand=scroll.set)
-            scroll.pack(side='right', fill='y')
-            canvas.pack(side='left', fill='both', expand=True)
-            frame = ttk.Frame(canvas, padding=16)
-            window_id = canvas.create_window((0, 0), window=frame, anchor='nw')
-            frame.bind('<Configure>', lambda event, c=canvas: c.configure(scrollregion=c.bbox('all')))
-            canvas.bind('<Configure>', lambda event, c=canvas, i=window_id: c.itemconfigure(i, width=event.width))
-            self.tabs[title] = frame
-        display = self.tabs['Display']
-        ttk.Label(display, text='Temperature unit', font=('Arial', 13, 'bold')).pack(anchor='w')
-        self.unit_choice = tk.StringVar(value='Fahrenheit (°F)' if self.temperature_unit == 'F' else 'Celsius (°C)')
-        self.unit_select = ttk.Combobox(display, textvariable=self.unit_choice,
-            values=('Celsius (°C)', 'Fahrenheit (°F)'), state='readonly', width=22)
-        self.unit_select.pack(anchor='w', pady=12)
-        self.unit_select.bind('<<ComboboxSelected>>', self.select_temperature_unit)
-        ttk.Label(display, text='Choose how temperatures appear on this desktop. Your choice is saved. '
-                  'Readings, alerts and temperature limits update together.', wraplength=540).pack(anchor='w')
-        feeding = self.tabs['Feeding']
-        ttk.Label(feeding, text='Choose how much to feed now', font=('Arial', 13, 'bold')).pack(anchor='w')
-        ttk.Label(feeding, text='1 cycle = open for 1 second, then close for 1 second.\nCycles are movements, not grams; calibrate the food amount first.').pack(anchor='w', pady=10)
-        self.cycles = tk.StringVar(value='1')
-        row = ttk.Frame(feeding); row.pack(anchor='w', pady=5)
-        ttk.Label(row, text='Cycles (whole number):').pack(side='left', padx=(0, 10))
-        ttk.Entry(row, textvariable=self.cycles, width=12).pack(side='left')
-        self.feed_button = ttk.Button(row, text='Feed now', command=lambda: self.run(lambda: feeding_control.request_feed(self.cycles.get())))
-        self.feed_button.pack(side='left', padx=10)
-        ttk.Button(row, text='Stop feeder', command=lambda: self.run(feeding_control.stop_feeder)).pack(side='left')
-        self.feed_status = tk.StringVar()
-        ttk.Label(feeding, textvariable=self.feed_status, wraplength=680).pack(anchor='w', pady=14)
-        row = ttk.Frame(feeding); row.pack(anchor='w')
-        ttk.Button(row, text='Pause automatic feeding', command=lambda: self.run(lambda: feeding_control.set_paused(True))).pack(side='left', padx=(0, 8))
-        ttk.Button(row, text='Resume automatic feeding', command=lambda: self.run(lambda: feeding_control.set_paused(False))).pack(side='left')
-        ttk.Button(feeding, text='Edit feeding schedule', command=schedule_callback).pack(anchor='w', pady=14)
-        ttk.Label(feeding, text='Pause skips scheduled feeds. Feed now does not change your schedule.\nStop cancels the active serving; it does not pause future schedules.').pack(anchor='w')
-        pumps = self.tabs['Water pumps']
+        self.configure(bg='#f3f7fa')
+        self._style_controls()
+        self.busy = False
+        self.results = queue.Queue(maxsize=1)
+        self._last_status = None
         self.water_schedule_window = None
-        ttk.Button(pumps, text='Water-change schedule', command=self.open_water_schedule).pack(anchor='w', pady=(0, 12))
-        ttk.Label(pumps, text='Manual control overrides automatic water changes.', font=('Arial', 12, 'bold')).pack(anchor='w')
-        ttk.Label(pumps, text='Drain = remove tank water. Refill = add fresh water.\nStop draining / Stop refilling stops that pump only; the other keeps its state.\nManual pumps keep running until stopped. Stay with the tank.\nStop keeps automatic control paused; Resume auto restores it.').pack(anchor='w', pady=12)
-        self.pump_status = tk.StringVar()
-        ttk.Label(pumps, textvariable=self.pump_status, wraplength=680).pack(anchor='w', pady=12)
-        for label, action in [('Start draining water', 'extract_start'), ('Stop draining', 'extract_stop'), ('Start refilling water', 'insert_start'), ('Stop refilling', 'insert_stop'), ('Run both pumps — drain + refill', 'both_start'), ('Stop pumps / pause auto', 'stop_all'), ('Resume automatic water control', 'auto_resume')]:
-            ttk.Button(pumps, text=label, command=lambda a=action: self.run(lambda: water_control.manual_action(a))).pack(anchor='w', pady=5)
-        fan = self.tabs['Fan']
-        ttk.Label(fan, text='Cooling fan', font=('Arial', 13, 'bold')).pack(anchor='w')
-        self.fan_status = tk.StringVar()
-        ttk.Label(fan, textvariable=self.fan_status, wraplength=540).pack(anchor='w', pady=12)
-        self.fan_buttons = []
-        for label, mode in [('Auto — follow temperature', 'AUTO'), ('Fan on', 'ON'), ('Fan off', 'OFF')]:
-            button = ttk.Button(fan, text=label, command=lambda m=mode: self.run(lambda: fan_control.set_mode(m)))
-            button.pack(anchor='w', pady=5)
-            self.fan_buttons.append(button)
-        self.fan_explanation = ttk.Label(fan, text='Auto follows the temperature limit. On / Off overrides it.',
-                  wraplength=540)
-        self.fan_explanation.pack(anchor='w', pady=12)
-        sensors = self.tabs['Sensors']
-        ttk.Label(sensors, text='Sensor activation', font=('Arial', 13, 'bold')).pack(anchor='w')
-        ttk.Label(sensors, text='Disable a faulty sensor to exclude its readings, alerts and automatic actions. '
-                  'Its associated protection is bypassed. Changes are saved and shared with the web dashboard.',
-                  wraplength=540).pack(anchor='w', pady=(6, 12))
+        self.after_id = None
+        self.command_buttons = []
         self.sensor_rows = {}
-        for key, (label, effect) in sensor_control.SENSORS.items():
-            row = ttk.Frame(sensors)
-            row.pack(fill='x', pady=7)
-            status = tk.StringVar()
-            ttk.Label(row, text=label, font=('Arial', 11, 'bold')).grid(row=0, column=0, sticky='w')
-            ttk.Label(row, textvariable=status).grid(row=1, column=0, sticky='w')
-            button = ttk.Button(row, command=lambda k=key: self.run(
-                lambda: sensor_control.apply({k: not sensor_control.enabled(k)})))
-            button.grid(row=0, column=1, rowspan=2, sticky='e', padx=(12, 0))
-            ttk.Label(row, text=effect, wraplength=510).grid(row=2, column=0, columnspan=2, sticky='w')
-            row.columnconfigure(0, weight=1)
-            self.sensor_rows[key] = (status, button)
-        self.sensor_sync = tk.StringVar()
-        ttk.Label(sensors, textvariable=self.sensor_sync, wraplength=540).pack(anchor='w', pady=12)
-        camera = self.tabs['Camera']
-        ttk.Label(camera, text='Move the camera', font=('Arial', 13, 'bold')).pack(anchor='w')
-        arrows = ttk.Frame(camera); arrows.pack(anchor='w', pady=15)
-        for name, r, c in [('up',0,1), ('left',1,0), ('center',1,1), ('right',1,2), ('down',2,1)]:
-            ttk.Button(arrows, text=name.title(), command=lambda cmd=name: self.run(lambda: self.camera_command(cmd))).grid(row=r, column=c, padx=4, pady=4)
-        ttk.Button(camera, text='Open local dashboard / camera view', command=lambda: webbrowser.open(f'http://localhost:{config.WEB_PORT}/camera')).pack(anchor='w', pady=10)
-        limits = self.tabs['Alert settings']
         self.limit_vars = {}
+        self.limit_labels = {}
+        self.message = tk.StringVar()
+        heading = ttk.Frame(self, style='Aqua.TFrame', padding=(22, 18, 22, 12))
+        heading.pack(fill='x')
+        ttk.Label(heading, text='Controls & settings', style='Aqua.Title.TLabel').pack(anchor='w')
+        body = ttk.Frame(self, style='Aqua.TFrame', padding=(16, 0, 16, 0))
+        body.pack(fill='both', expand=True)
+        sidebar = ttk.Frame(body, style='Aqua.TFrame')
+        sidebar.pack(side='left', fill='y', padx=(0, 16))
+        content = ttk.Frame(body, style='Aqua.Card.TFrame')
+        content.pack(side='left', fill='both', expand=True)
+        content.rowconfigure(0, weight=1)
+        content.columnconfigure(0, weight=1)
+        self.tabs, self.pages, self.navigation, self.canvases = {}, {}, {}, {}
+        sections = [('Feeding', 'Feeding'), ('Water pumps', 'Water Changes'), ('Fan', 'Cooling Fan'),
+                    ('Camera', 'Camera'), ('Alert settings', 'System settings'), ('Admin PIN', 'Admin PIN')]
+        if config.DEVELOPER_OPTIONS:
+            sections.append(('Sensors', 'Sensors'))
+        for key, label in sections:
+            button = ttk.Button(sidebar, text=label, style='Aqua.Nav.TButton',
+                                command=lambda name=key: self.show_page(name), width=16)
+            button.pack(fill='x', pady=(0, 6))
+            self.navigation[key] = button
+            page = ttk.Frame(content, style='Aqua.Card.TFrame')
+            page.grid(row=0, column=0, sticky='nsew')
+            canvas = tk.Canvas(page, bg='white', highlightthickness=0, width=400)
+            scrollbar = ttk.Scrollbar(page, orient='vertical', command=canvas.yview)
+            canvas.configure(yscrollcommand=scrollbar.set)
+            scrollbar.pack(side='right', fill='y')
+            canvas.pack(fill='both', expand=True)
+            frame = ttk.Frame(canvas, style='Aqua.Card.TFrame', padding=20)
+            window = canvas.create_window((0, 0), window=frame, anchor='nw')
+            frame.bind('<Configure>', lambda event, c=canvas: c.configure(scrollregion=c.bbox('all')))
+            canvas.bind('<Configure>', lambda event, c=canvas, i=window: c.itemconfigure(i, width=event.width))
+            self.pages[key], self.tabs[key], self.canvases[key] = page, frame, canvas
+        self.bind('<MouseWheel>', self._scroll)
+        self.bind('<Button-4>', lambda event: self._scroll(event, -1))
+        self.bind('<Button-5>', lambda event: self._scroll(event, 1))
+        self._build_feeding(schedule_callback)
+        self._build_pumps()
+        self._build_fan()
+        self._build_camera()
+        self._build_limits()
+        self._build_pin()
+        if config.DEVELOPER_OPTIONS:
+            self._build_sensors()
+        ttk.Label(self, textvariable=self.message, style='Aqua.Message.TLabel',
+                  wraplength=720, padding=(22, 10)).pack(fill='x')
+        self.worker = SnapshotWorker(self._read_status)
+        self.show_page('Feeding')
+        self.protocol('WM_DELETE_WINDOW', self.close)
+        self.bind('<Escape>', lambda event: self.close())
+        self.refresh()
+
+    def _style_controls(self):
+        style = ttk.Style(self)
+        style.configure('Aqua.TFrame', background='#f3f7fa')
+        style.configure('Aqua.Card.TFrame', background='white')
+        style.configure('Aqua.TLabel', background='white', foreground='#183349', font=('DejaVu Sans', 10))
+        style.configure('Aqua.Title.TLabel', background='#f3f7fa', foreground='#183349', font=('DejaVu Sans', 19, 'bold'))
+        style.configure('Aqua.Heading.TLabel', background='white', foreground='#183349', font=('DejaVu Sans', 15, 'bold'))
+        style.configure('Aqua.Status.TLabel', background='#eef7f9', foreground='#16596a', padding=12, font=('DejaVu Sans', 10))
+        style.configure('Aqua.Message.TLabel', background='#f3f7fa', foreground='#175d70', font=('DejaVu Sans', 10))
+        style.configure('Aqua.TButton', padding=(12, 9), font=('DejaVu Sans', 10), background='#eaf1f7', foreground='#183349')
+        style.map('Aqua.TButton', background=[('active', '#dce9f1')], foreground=[('disabled', '#8494a2')])
+        style.configure('Aqua.Primary.TButton', padding=(12, 9), font=('DejaVu Sans', 10), background='#126b80', foreground='white')
+        style.map('Aqua.Primary.TButton', background=[('disabled', '#a5bac0'), ('active', '#0b5264')], foreground=[('disabled', 'white'), ('!disabled', 'white')])
+        style.configure('Aqua.Danger.TButton', padding=(12, 9), font=('DejaVu Sans', 10), background='#b73542', foreground='white')
+        style.map('Aqua.Danger.TButton', background=[('disabled', '#c6a5a8'), ('active', '#922832')], foreground=[('!disabled', 'white')])
+        style.configure('Aqua.Nav.TButton', padding=(12, 11), anchor='w', font=('DejaVu Sans', 10), background='#f3f7fa', foreground='#42596c')
+        style.map('Aqua.Nav.TButton', background=[('pressed', '#126b80'), ('active', '#e2edf3')], foreground=[('pressed', 'white')])
+        style.configure('Aqua.TEntry', padding=8, font=('DejaVu Sans', 11))
+        style.configure('Aqua.TLabelframe', background='white', padding=12, borderwidth=1, relief='solid', bordercolor='#d7e3eb', lightcolor='#d7e3eb', darkcolor='#d7e3eb')
+        style.configure('Aqua.TLabelframe.Label', background='white', foreground='#126b80', font=('DejaVu Sans', 10, 'bold'))
+
+    def _title(self, parent, text):
+        ttk.Label(parent, text=text, style='Aqua.Heading.TLabel').pack(anchor='w', pady=(0, 16))
+
+    def _button(self, parent, text, command, style='Aqua.TButton'):
+        button = ttk.Button(parent, text=text, command=command, style=style)
+        self.command_buttons.append(button)
+        return button
+
+    def _status(self, parent):
+        value = tk.StringVar(value='Connecting…')
+        ttk.Label(parent, textvariable=value, style='Aqua.Status.TLabel', wraplength=430).pack(fill='x', pady=(0, 16))
+        return value
+
+    def _build_feeding(self, schedule_callback):
+        panel = self.tabs['Feeding']
+        self._title(panel, 'Feeding')
+        self.feed_status = self._status(panel)
+        form = ttk.Frame(panel, style='Aqua.Card.TFrame')
+        form.pack(fill='x', pady=(0, 16))
+        ttk.Label(form, text='Cycles per serving', style='Aqua.TLabel').grid(row=0, column=0, sticky='w', pady=(0, 6))
+        self.cycles = tk.StringVar(value='1')
+        ttk.Entry(form, textvariable=self.cycles, width=8, style='Aqua.TEntry').grid(row=1, column=0, sticky='w')
+        self.feed_button = self._button(form, 'Feed now', self.feed_now, 'Aqua.Primary.TButton')
+        self.feed_button.grid(row=1, column=1, padx=10)
+        self._button(form, 'Stop feeder', lambda: self.run(feeding_control.stop_feeder), 'Aqua.Danger.TButton').grid(row=1, column=2)
+        row = ttk.Frame(panel, style='Aqua.Card.TFrame'); row.pack(fill='x', pady=(0, 16))
+        self._button(row, 'Pause schedule', lambda: self.run(lambda: feeding_control.set_paused(True))).pack(side='left', padx=(0, 8))
+        self._button(row, 'Resume schedule', lambda: self.run(lambda: feeding_control.set_paused(False))).pack(side='left')
+        ttk.Button(panel, text='Feeding schedule', style='Aqua.Primary.TButton', command=schedule_callback).pack(anchor='w')
+
+    def _build_pumps(self):
+        panel = self.tabs['Water pumps']
+        self._title(panel, 'Water Changes')
+        self.pump_status = self._status(panel)
+        grid = ttk.Frame(panel, style='Aqua.Card.TFrame'); grid.pack(fill='x')
+        grid.columnconfigure((0, 1), weight=1)
+        actions = [('Drain water', 'extract_start', 'Aqua.Primary.TButton'),
+                   ('Refill water', 'insert_start', 'Aqua.Primary.TButton'),
+                   ('Stop draining', 'extract_stop', 'Aqua.TButton'),
+                   ('Stop refilling', 'insert_stop', 'Aqua.TButton'),
+                   ('Drain + refill', 'both_start', 'Aqua.TButton'),
+                   ('Stop all pumps', 'stop_all', 'Aqua.Danger.TButton')]
+        for i, (label, action, style) in enumerate(actions):
+            self._button(grid, label, lambda a=action: self.run(lambda: water_control.manual_action(a)), style).grid(row=i//2, column=i%2, sticky='ew', padx=4, pady=5)
+        self._button(panel, 'Resume automatic control', lambda: self.run(lambda: water_control.manual_action('auto_resume'))).pack(fill='x', padx=4, pady=(8, 18))
+        ttk.Separator(panel).pack(fill='x', pady=(0, 18))
+        ttk.Button(panel, text='Water-change schedule', style='Aqua.Primary.TButton', command=self.open_water_schedule).pack(anchor='w')
+
+    def _build_fan(self):
+        panel = self.tabs['Fan']; self._title(panel, 'Cooling Fan')
+        self.fan_status = self._status(panel)
+        row = ttk.Frame(panel, style='Aqua.Card.TFrame'); row.pack(fill='x')
+        self.fan_buttons = []
+        for label, mode in [('Auto', 'AUTO'), ('Fan on', 'ON'), ('Fan off', 'OFF')]:
+            button = self._button(row, label, lambda m=mode: self.run(lambda: fan_control.set_mode(m)))
+            button.pack(side='left', padx=(0, 10)); self.fan_buttons.append(button)
+
+    def _build_sensors(self):
+        panel = self.tabs['Sensors']; self._title(panel, 'Sensors')
+        self.sensor_sync = self._status(panel)
+        for key, (label, _) in sensor_control.SENSORS.items():
+            row = ttk.Frame(panel, style='Aqua.Card.TFrame'); row.pack(fill='x', pady=(0, 14))
+            row.columnconfigure(0, weight=1)
+            ttk.Label(row, text=label, style='Aqua.TLabel').grid(row=0, column=0, sticky='w')
+            status = tk.StringVar()
+            ttk.Label(row, textvariable=status, style='Aqua.TLabel').grid(row=1, column=0, sticky='w', pady=(4, 0))
+            button = self._button(row, 'Enable', lambda k=key: self.run(lambda: sensor_control.apply({k: not sensor_control.enabled(k)})))
+            button.grid(row=0, column=1, rowspan=2, padx=(12, 0))
+            self.sensor_rows[key] = (status, button)
+
+    def _build_camera(self):
+        panel = self.tabs['Camera']; self._title(panel, 'Camera')
+        arrows = ttk.Frame(panel, style='Aqua.Card.TFrame'); arrows.pack(pady=(0, 20))
+        for name, r, c in [('up', 0, 1), ('left', 1, 0), ('center', 1, 1), ('right', 1, 2), ('down', 2, 1)]:
+            self._button(arrows, name.title(), lambda cmd=name: self.run(lambda: self.camera_command(cmd))).grid(row=r, column=c, padx=4, pady=4)
+        ttk.Button(panel, text='Open camera view', style='Aqua.Primary.TButton', command=lambda: webbrowser.open(f'http://localhost:{config.WEB_PORT}/camera')).pack(anchor='w')
+
+    def _build_limits(self):
+        panel = self.tabs['Alert settings']; self._title(panel, 'System settings')
         values = config.get_public_limits()
-        ph_groups = {}
-        for row, title in ((1, 'pH · Warning range'), (2, 'pH · Critical limits')):
-            group = ttk.LabelFrame(limits, text=title, padding=8)
-            group.grid(row=row, column=0, columnspan=2, sticky='ew', padx=6, pady=6)
-            group.columnconfigure((0, 1), weight=1)
-            ph_groups[row] = group
-        for i, (key, label, path) in enumerate(LIMIT_FIELDS):
-            value = values
-            for part in path:
-                value = value[part]
-            if key in ('tempLimit', 'tempCriticalLimit'):
-                value = temperature_units.to_display(value, self.temperature_unit)
-                label = label.replace('°C', '°' + self.temperature_unit)
-            var = tk.StringVar(value=str(value)); self.limit_vars[key] = var
-            r, c = divmod(i, 2)
-            field = ttk.Frame(ph_groups[r] if r in ph_groups else limits)
-            field.grid(row=0 if r in ph_groups else r, column=c, sticky='ew', padx=6, pady=4)
-            self.limit_labels[key] = ttk.Label(field, text=label, wraplength=290)
-            self.limit_labels[key].pack(anchor='w')
-            ttk.Entry(field, textvariable=var, width=24).pack(fill='x')
-            hint = {
-                'predictionDelaySeconds': 'Example: 30 checks roughly the last 30 seconds for a rising or falling trend. It does not delay critical protection.',
-                'predictionAlertDurationSeconds': 'How long a prediction stays visible once shown.',
-                'maxAdminSessions': 'Default: 2. Lowering this signs out the least recently active Admin sessions.',
-            }.get(key)
-            if hint:
-                ttk.Label(field, text=hint, wraplength=290).pack(anchor='w', pady=(4, 0))
-        limits.columnconfigure((0,1), weight=1)
-        ttk.Button(limits, text='Save alert settings', command=lambda: self.run(self.save_limits)).grid(row=7, column=0, sticky='w', pady=12)
-        ttk.Label(limits, text='Outside the warning range: Warning. At or beyond a critical limit: Critical.',
-                  wraplength=550).grid(row=6, column=0, columnspan=2, sticky='w', padx=6, pady=8)
-        pin_panel = self.tabs['Admin PIN']
-        ttk.Label(pin_panel, text='Change web Admin PIN', font=('Arial', 13, 'bold')).pack(anchor='w')
+        groups = [('Temperature', LIMIT_FIELDS[:2]), ('pH · Warning range', LIMIT_FIELDS[2:4]),
+                  ('pH · Critical limits', LIMIT_FIELDS[4:6]), ('Predictions', LIMIT_FIELDS[6:8]),
+                  ('Access limits', LIMIT_FIELDS[8:])]
+        for title, fields in groups:
+            group = ttk.LabelFrame(panel, text=title, style='Aqua.TLabelframe')
+            group.pack(fill='x', pady=(0, 14)); group.columnconfigure((0, 1), weight=1)
+            for i, (key, label, path) in enumerate(fields):
+                value = values
+                for part in path: value = value[part]
+                if key in ('tempLimit', 'tempCriticalLimit'):
+                    value = temperature_units.to_display(value, self.temperature_unit)
+                    label = label.replace('°C', '°' + self.temperature_unit)
+                var = tk.StringVar(value=f'{value:g}'); self.limit_vars[key] = var
+                field = ttk.Frame(group, style='Aqua.Card.TFrame')
+                field.grid(row=i//2, column=i%2, sticky='ew', padx=5, pady=5)
+                self.limit_labels[key] = ttk.Label(field, text=label, style='Aqua.TLabel', wraplength=175)
+                self.limit_labels[key].pack(anchor='w', pady=(0, 6))
+                ttk.Entry(field, textvariable=var, width=16, style='Aqua.TEntry').pack(fill='x')
+        self._button(panel, 'Save settings', self.submit_limits, 'Aqua.Primary.TButton').pack(anchor='w')
+
+    def _build_pin(self):
+        panel = self.tabs['Admin PIN']; self._title(panel, 'Admin PIN')
         self.pin_vars = [tk.StringVar() for _ in range(3)]
         for label, var in zip(('Current PIN', 'New PIN', 'Confirm new PIN'), self.pin_vars):
-            ttk.Label(pin_panel, text=label).pack(anchor='w', pady=(12, 3))
-            ttk.Entry(pin_panel, textvariable=var, show='•', width=30).pack(anchor='w')
-        self.pin_save_button = ttk.Button(pin_panel, text='Save PIN', command=self.change_admin_pin)
-        self.pin_save_button.pack(anchor='w', pady=14)
-        self.pin_feedback = tk.StringVar(value='Changing the PIN signs out all web Admin sessions.')
-        ttk.Label(pin_panel, textvariable=self.pin_feedback, wraplength=540).pack(anchor='w')
-        self._pin_results = queue.Queue(maxsize=1)
-        self._pin_after = None
-        self.after_id = None
-        self.protocol('WM_DELETE_WINDOW', self.close)
-        self.bind('<Escape>', lambda _: self.close())
-        self.refresh()
+            ttk.Label(panel, text=label, style='Aqua.TLabel').pack(anchor='w', pady=(0, 5))
+            ttk.Entry(panel, textvariable=var, show='•', style='Aqua.TEntry', width=28).pack(anchor='w', pady=(0, 14))
+        self.pin_save_button = self._button(panel, 'Save PIN', self.change_admin_pin, 'Aqua.Primary.TButton')
+        self.pin_save_button.pack(anchor='w')
+
+    def show_page(self, name):
+        self.pages[name].tkraise()
+        self.active_page = name
+        for key, button in self.navigation.items():
+            button.state(['pressed'] if key == name else ['!pressed'])
+        self.message.set('')
+
+    def _scroll(self, event, direction=None):
+        canvas = self.canvases[self.active_page]
+        bounds = canvas.bbox('all')
+        if bounds and bounds[3] > canvas.winfo_height():
+            canvas.yview_scroll(direction or (-1 if event.delta > 0 else 1), 'units')
 
     def camera_command(self, command):
         if not config.send_to_identified_output_serial_ports(config.build_camera_serial_message(command)):
-            raise ValueError('MegaOutput disconnected; camera command not sent.')
+            raise ValueError('Camera disconnected.')
         config.update_servo_position_for_command(command)
+
+    def feed_now(self):
+        cycles = self.cycles.get()
+        self.run(lambda: feeding_control.request_feed(cycles))
 
     def change_admin_pin(self):
         values = [var.get() for var in self.pin_vars]
-        self.pin_save_button.configure(state='disabled')
-        self.pin_feedback.set('Saving…')
-        def save():
-            try:
-                admin_credentials.change(*values)
-                self._pin_results.put((True, 'PIN changed. Sign in again on the web.'))
-            except Exception as exc:
-                self._pin_results.put((False, str(exc)))
-        threading.Thread(target=save, daemon=True).start()
-        self._pin_after = self.after(50, self._finish_pin_change)
-
-    def _finish_pin_change(self):
-        try:
-            success, message = self._pin_results.get_nowait()
-        except queue.Empty:
-            self._pin_after = self.after(50, self._finish_pin_change)
-            return
-        self._pin_after = None
-        self.pin_feedback.set(message)
-        self.pin_save_button.configure(state='normal')
-        if success:
-            for var in self.pin_vars: var.set('')
-
-    def select_temperature_unit(self, event=None):
-        unit = 'F' if self.unit_choice.get().startswith('Fahrenheit') else 'C'
-        if self.on_temperature_unit_change:
-            self.on_temperature_unit_change(unit)
-        else:
-            config.set_db_value('gui_temperature_unit', unit)
-            self.change_temperature_unit(unit)
+        self.run(lambda: admin_credentials.change(*values), 'PIN changed. Sign in again on the web.', clear_pin=True)
 
     def change_temperature_unit(self, unit):
         previous = self.temperature_unit
         self.temperature_unit = unit
-        self.unit_choice.set('Fahrenheit (°F)' if unit == 'F' else 'Celsius (°C)')
         for key in ('tempLimit', 'tempCriticalLimit'):
             try:
                 value = temperature_units.to_celsius(self.limit_vars[key].get(), previous)
@@ -230,22 +268,39 @@ class LocalControls(tk.Toplevel):
                 pass
             label = self.limit_labels[key]
             label.configure(text=label.cget('text').replace('°' + previous, '°' + unit))
-        self.refresh(schedule=False)
+        if self._last_status:
+            self._render_status(self._last_status)
 
     def save_limits(self):
-        payload = {k: v.get() for k, v in self.limit_vars.items()}
+        # Also used directly by callers with an already prepared form.
+        payload = {key: var.get() for key, var in self.limit_vars.items()}
         for key in ('tempLimit', 'tempCriticalLimit'):
             payload[key] = temperature_units.to_celsius(payload[key], self.temperature_unit)
         return config.update_limits_from_payload(payload)
 
-    def run(self, action):
+    def submit_limits(self):
         try:
-            action()
-            self.message.set('Request processed. Check the current device status below.')
-            self.refresh(schedule=False)
-        except (ValueError, OSError) as exc:
-            self.message.set(str(exc))
-            messagebox.showerror('Cannot complete request', str(exc), parent=self)
+            payload = {key: var.get() for key, var in self.limit_vars.items()}
+            for key in ('tempLimit', 'tempCriticalLimit'):
+                payload[key] = temperature_units.to_celsius(payload[key], self.temperature_unit)
+        except ValueError:
+            self.message.set('Enter valid temperature limits.')
+            return
+        self.run(lambda: config.update_limits_from_payload(payload), 'Settings saved.')
+
+    def run(self, action, success='Done.', clear_pin=False):
+        if self.busy:
+            return
+        self.busy = True
+        self.message.set('Sending…')
+        for button in self.command_buttons: button.state(['disabled'])
+        def work():
+            try:
+                action()
+                self.results.put((True, success, clear_pin))
+            except Exception as exc:
+                self.results.put((False, str(exc), False))
+        threading.Thread(target=work, name='AquaPi local command', daemon=True).start()
 
     def open_water_schedule(self):
         if self.water_schedule_window and self.water_schedule_window.winfo_exists():
@@ -254,53 +309,69 @@ class LocalControls(tk.Toplevel):
             from water_schedule_gui import WaterScheduleWindow
             self.water_schedule_window = WaterScheduleWindow(self)
 
-    def refresh(self, schedule=True):
-        if not self.winfo_exists():
-            return
-        margin = '0.9°F' if self.temperature_unit == 'F' else '0.5°C'
-        self.fan_explanation.configure(text='Auto starts only at the critical temperature after 5 seconds and uses a ' + margin +
-            ' cooling margin. On and Off override temperature control, including when the temperature sensor is disabled. '
-            'Choose Auto to resume automatic cooling. Restarting the app restores Auto.')
-        fan = fan_control.get_status()
-        text = 'MegaOutput unavailable — connect it with updated fan firmware.'
+    @staticmethod
+    def _read_status():
+        return dict(fan=fan_control.get_status(), sensors=sensor_control.get_status(),
+                    feeder=feeding_control.get_status(), pumps=water_control.get_status())
+
+    def _render_status(self, snapshot):
+        fan, controls, state, pumps = (snapshot[key] for key in ('fan', 'sensors', 'feeder', 'pumps'))
+        text = 'Fan disconnected'
         if fan['available']:
-            text = fan['mode'] + ' • Fan ' + ('ON' if fan['on'] else 'OFF')
-            if not fan['confirmed']: text += ' • Waiting for confirmation'
-            elif fan['pending'] != 'NONE': text += ' • Checking temperature for 5 seconds'
+            text = fan['mode'] + ' · Fan ' + ('ON' if fan['on'] else 'OFF')
+            if not fan['confirmed']: text += ' · Awaiting confirmation'
+            elif fan['pending'] != 'NONE': text += ' · Checking temperature'
         self.fan_status.set(text)
-        for button in self.fan_buttons:
-            button.configure(state='normal' if fan['available'] else 'disabled')
-        controls = sensor_control.get_status()
-        for key, item in controls['sensors'].items():
-            status, button = self.sensor_rows[key]
+        for mode, button in zip(('AUTO', 'ON', 'OFF'), self.fan_buttons):
+            button.configure(style='Aqua.Primary.TButton' if fan['mode'] == mode else 'Aqua.TButton')
+            button.state(['!disabled'] if fan['available'] and not self.busy else ['disabled'])
+        for key, (status, button) in self.sensor_rows.items():
+            item = controls['sensors'][key]
             reading = item['reading']
-            value = temperature_units.format_reading(reading, self.temperature_unit) if key == 'temp' else ('Water detected' if reading else 'No water detected') if type(reading) is bool else str(reading or '')
-            status.set(item['status'].title() + (' • ' + value if item['status'] == 'active' else ''))
+            if key == 'temp': value = temperature_units.format_reading(reading, self.temperature_unit)
+            elif type(reading) is bool: value = 'Water detected' if reading else 'No water detected'
+            else: value = str(reading if reading is not None else '')
+            status.set(item['status'].title() + (' · ' + value if item['status'] == 'active' else ''))
             button.configure(text='Disable' if item['enabled'] else 'Enable')
-        self.sensor_sync.set('Settings saved on this Raspberry Pi. ' +
-                             ('MegaInput synchronized.' if controls['inputApplied'] else 'Waiting for updated MegaInput to synchronize.') +
-                             ('' if controls['coolerApplied'] else ' Temperature control: waiting for updated MegaOutput.'))
-        state = feeding_control.get_status()
+        if self.sensor_rows:
+            self.sensor_sync.set('Synchronized' if controls['inputApplied'] and controls['coolerApplied'] else 'Syncing sensor settings…')
         job = state['active'] or state['last']
-        text = 'Automatic feeding: ' + ('PAUSED' if state['paused'] else 'enabled')
-        text += ' • MegaOutput: ' + ('ready' if state['ready'] else 'unavailable / update firmware')
-        if job:
-            text += f"\nLast serving: {job['cycles']} cycles • {job['status']}"
+        text = 'Schedule paused' if state['paused'] else 'Schedule enabled'
+        if not state['ready']: text += ' · Feeder disconnected'
+        if job: text += f"\n{job['cycles']} cycles · {job['status']}"
         self.feed_status.set(text)
-        pumps = water_control.get_status()
-        self.feed_button.configure(state='normal' if state['ready'] and not state['busy'] and not pumps['pumpActive'] else 'disabled')
-        self.pump_status.set(('MANUAL' if pumps['manualOverride'] else 'AUTOMATIC') + ' • ' + ('Both pumps running' if pumps['extractionOn'] and pumps['insertionOn'] else 'Draining' if pumps['extractionOn'] else 'Refilling' if pumps['insertionOn'] else 'Pumps stopped') + (' • Output disconnected' if not pumps['outputConnected'] else ''))
-        if pumps.get('pendingQuality'):
-            self.pump_status.set(self.pump_status.get() + '\nChecking: ' + ', '.join(
-                item['sensor'] + ' ' + str(item['seconds']) + '/5 seconds' for item in pumps['pendingQuality']))
-        if schedule:
-            self.after_id = self.after(1000, self.refresh)
+        ready = state['ready'] and not state['busy'] and not pumps['pumpActive'] and not self.busy
+        self.feed_button.state(['!disabled'] if ready else ['disabled'])
+        running = 'Both pumps running' if pumps['extractionOn'] and pumps['insertionOn'] else 'Draining' if pumps['extractionOn'] else 'Refilling' if pumps['insertionOn'] else 'Pumps stopped'
+        text = ('Manual' if pumps['manualOverride'] else 'Automatic') + ' · ' + running
+        if not pumps['outputConnected']: text += ' · Disconnected'
+        if pumps.get('pendingQuality'): text += ' · Checking water quality'
+        self.pump_status.set(text)
+
+    def refresh(self, schedule=True):
+        try:
+            success, text, clear_pin = self.results.get_nowait()
+            self.busy = False
+            for button in self.command_buttons: button.state(['!disabled'])
+            self.message.set(text)
+            if clear_pin:
+                for var in self.pin_vars: var.set('')
+            if self._last_status: self._render_status(self._last_status)
+            self.worker.request()
+        except queue.Empty:
+            pass
+        try:
+            snapshot = self.worker.results.get_nowait()
+            if snapshot != self._last_status:
+                self._last_status = snapshot
+                self._render_status(snapshot)
+        except queue.Empty:
+            pass
+        if schedule: self.after_id = self.after(100, self.refresh)
 
     def close(self):
         if self.water_schedule_window and self.water_schedule_window.winfo_exists():
             self.water_schedule_window.close()
-        if self._pin_after:
-            self.after_cancel(self._pin_after)
-        if self.after_id:
-            self.after_cancel(self.after_id)
+        self.worker.close()
+        if self.after_id: self.after_cancel(self.after_id)
         self.destroy()

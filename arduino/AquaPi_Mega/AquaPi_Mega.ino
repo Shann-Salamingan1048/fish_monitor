@@ -1588,7 +1588,7 @@ void service(uint32_t now) {
   uint8_t phCritical = !settling && phValid ? (ph<=active.low ? 1 : ph>=active.high ? 2 : 0) : 0;
   if ((quality & 1) && (c == 255 || c>=3)) quality &= ~1;
   if ((quality & 2) && !phBad) quality &= ~2;
-  if (c == 0) {
+  if (c == 0 || c == 1) { // Very Cloudy or Cloudy starts correction.
     if (!turbCandidate) { turbCandidate=true; turbSince=now; }
     if (uint32_t(now-turbSince)>=active.confirmMs) quality |= 1;
   } else turbCandidate=false;

@@ -12,12 +12,11 @@ function temperatureToCelsius(value, unit = temperatureUnit) {
 function temperatureText(value) {
     const raw = String(value ?? '--');
     const number = parseSensorNumber(value);
-    return number === null ? raw : formatNumber(temperatureToDisplay(number)) + ' °' + temperatureUnit;
+    return number === null ? raw : temperatureToDisplay(number).toFixed(1) + ' °' + temperatureUnit;
 }
 function temperatureMessage(text) {
-    if (temperatureUnit !== 'F') return String(text);
     return String(text).replace(/(-?\d+(?:\.\d+)?)\s*°C/g,
-        (_, number) => formatNumber(temperatureToDisplay(number)) + '°F');
+        (_, number) => temperatureToDisplay(number).toFixed(1) + '°' + temperatureUnit);
 }
 function displayTemperatureAlert(alert) {
     if (alert.unit !== '°C') return alert;
@@ -53,15 +52,11 @@ function setTemperatureUnit(unit) {
     Object.values(graphCharts).forEach(chart => { if (chart) chart.update(); });
 }
 function setupTemperatureSelector() {
-    const header = document.querySelector('.dashboard > header');
-    if (!header) return;
-    const label = document.createElement('label');
-    label.className = 'temperature-preference';
-    label.innerHTML = 'Temperature <select id="temperature-unit" aria-label="Temperature unit"><option value="C">Celsius (°C)</option><option value="F">Fahrenheit (°F)</option></select>';
-    header.appendChild(label);
-    const select = label.querySelector('select');
-    select.value = temperatureUnit;
-    select.addEventListener('change', () => setTemperatureUnit(select.value));
+    const select = document.getElementById('temperature-unit');
+    if (select) {
+        select.value = temperatureUnit;
+        select.addEventListener('change', () => setTemperatureUnit(select.value));
+    }
     updateTemperatureLabels();
 }
 
@@ -631,10 +626,10 @@ function renderWaterControl(status) {
     const recovery = document.getElementById('sensor-recovery-status');
     const settling = status.phSettling;
     const recoveryText = status.calibrationActive
-        ? 'Calibration active: pH and clarity corrections paused. Return the probes to the aquarium, then finish calibration in Developer option.'
+        ? ''
         : settling?.active ? (settling.waitingForNormal
-            ? 'pH correction will wait 2 minutes after the pumps stop and water returns to Normal.'
-            : `pH settling: ${settling.remainingSeconds} s remaining before checking for correction.`) : '';
+            ? 'pH settling · Waiting for normal water level.'
+            : `pH settling · ${settling.remainingSeconds} s remaining.`) : '';
     if (recovery) { recovery.textContent = recoveryText; recovery.hidden = !recoveryText; }
     const pending = status.pendingQuality || [];
     const pendingText = pending.length ? 'Checking ' + pending.map(item =>
@@ -1088,10 +1083,10 @@ function renderSmartAlerts(data) {
         alertList.innerHTML = alerts.map(alert => {
             const severity = getSafeSeverity(alert.severity);
             const valueText = Number.isFinite(Number(alert.value))
-                ? "<span><i class=\"fas fa-gauge-high\"></i> " + escapeHtml(formatNumber(Number(alert.value))) + escapeHtml(alert.unit || "") + "</span>"
+                ? "<span><i class=\"fas fa-gauge-high\"></i> " + escapeHtml((['°C', '°F'].includes(alert.unit) ? Number(alert.value).toFixed(1) : formatNumber(Number(alert.value)))) + escapeHtml(alert.unit || "") + "</span>"
                 : "";
             const limitText = Number.isFinite(Number(alert.limit))
-                ? "<span><i class=\"fas fa-sliders\"></i> Limit: " + escapeHtml(formatNumber(Number(alert.limit))) + escapeHtml(alert.unit || "") + "</span>"
+                ? "<span><i class=\"fas fa-sliders\"></i> Limit: " + escapeHtml((['°C', '°F'].includes(alert.unit) ? Number(alert.limit).toFixed(1) : formatNumber(Number(alert.limit)))) + escapeHtml(alert.unit || "") + "</span>"
                 : "";
             const lastsSeconds = alert.lasts_seconds ?? alert.lastsSeconds;
             const durationText = Number.isFinite(Number(lastsSeconds))
@@ -1389,8 +1384,7 @@ function injectSensorControls() {
     const panel = document.createElement('section');
     panel.id = 'sensor-controls';
     panel.className = 'card sensor-controls';
-    panel.innerHTML = `<p id="sensor-disabled-count"></p>
-        <p>Disabled sensors do not trigger alerts or automatic actions.</p>
+    panel.innerHTML = `<h2>Sensors</h2><p id="sensor-disabled-count"></p>
         <p id="sensor-controls-access">Sign in as Admin to change sensors.</p>
         <div id="sensor-control-rows" class="sensor-control-grid"></div>
         <p id="sensor-sync-status"></p><p id="sensor-controls-message" role="status" aria-live="polite"></p>
@@ -1432,8 +1426,8 @@ function renderSensorControls(state) {
     document.getElementById('sensor-disabled-count').textContent = disabled.length ? '— ' + disabled.length + ' disabled' : '— all enabled';
     const banner = document.getElementById('sensor-disabled-banner');
     banner.hidden = !disabled.length;
-    banner.textContent = 'Disabled: ' + disabled.join(', ') + '. Their readings and protections are bypassed.';
-    document.getElementById('sensor-controls-access').textContent = currentRole === 'admin' ? 'Choose Enable or Disable for each sensor.' : 'Sign in as Admin to change sensors.';
+    banner.textContent = 'Disabled: ' + disabled.join(', ') + '.';
+    document.getElementById('sensor-controls-access').textContent = currentRole === 'admin' ? '' : 'Sign in as Admin to change sensors.';
     document.getElementById('sensor-sync-status').textContent = (state.inputApplied ? '' : 'Sensor settings syncing…') +
         (state.coolerApplied ? '' : ' Temperature control syncing…');
 }
@@ -1449,7 +1443,7 @@ async function toggleSensor(key) {
         const data = await response.json();
         if (!response.ok || !data.ok) throw new Error(data.error || 'Could not save sensor setting.');
         renderSensorControls(data.sensorControls);
-        message.textContent = data.sensorControls.sensors[key].label + (enabled ? ' enabled. Waiting for a fresh reading.' : ' disabled. Its alerts and automatic actions are bypassed.');
+        message.textContent = data.sensorControls.sensors[key].label + (enabled ? ' enabled.' : ' disabled.');
         await updateDashboard();
     } catch (error) { message.textContent = error.message; }
     finally { sensorControlBusy = false; renderSensorControls(sensorControlsState); }

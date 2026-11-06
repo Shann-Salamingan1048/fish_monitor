@@ -176,7 +176,11 @@ def cooling_fan_page():
 
 @flask_app.route('/sensors')
 def sensors_page():
-    return render_template('sensors.html')
+    if not config.DEVELOPER_OPTIONS:
+        abort(404)
+    if not is_admin():
+        return redirect('/access')
+    return redirect('/developer#sensor-controls')
 
 
 @flask_app.route('/settings')
@@ -377,6 +381,8 @@ def feeding_schedule_item_api(schedule_id):
 @flask_app.route('/api/sensor-controls', methods=['GET', 'PUT'])
 def sensor_controls():
     if request.method == 'PUT':
+        if not config.DEVELOPER_OPTIONS:
+            abort(404)
         error = require_admin_json()
         if error:
             return error

@@ -1637,3 +1637,8 @@ i.fa-camera::before { content: '▣'; }
   #water-schedule-form, .ph-options, .ph-readings { grid-template-columns: 1fr; }
   .water-run-status button { margin-left: 0; }
 }
+
+.display-settings { display: grid; gap: 12px; }
+.display-settings label { font-weight: 600; color: #284a5a; }
+.display-settings select { width: min(100%, 300px); min-height: 44px; padding: 10px 12px; border: 1px solid #b9ccd9; border-radius: 9px; background: white; color: #17364a; font: inherit; }
+#sensor-controls-access:empty, #sensor-sync-status:empty, #sensor-controls-message:empty { display: none; }

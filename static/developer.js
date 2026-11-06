@@ -48,8 +48,8 @@
         $('turbidity-ranges').replaceChildren();
         for (const row of rows) addRow(row);
         $('range-unit-note').textContent = rangeUnit === 'ADC'
-            ? 'Whole-number ranges cover 0–1023, including both endpoints. Low ADC is cloudy; high ADC is clear.'
-            : 'Ranges cover 0–1000 NTU. Each maximum equals the next minimum; a shared boundary belongs to the higher range. Higher NTU is cloudier. Enter your tested clarity limits.';
+            ? 'ADC range 0–1023 · Lower means cloudier.'
+            : 'NTU range 0–1000 · Higher means cloudier.';
     }
     function addPoint(point = {adc: '', ntu: ''}) {
         if ($('ntu-points').children.length >= 8) { message('Maximum 8 reference points.', true); return; }
@@ -97,8 +97,8 @@
         $('live-turbidity-ntu').textContent = live.turbidityNTU === null || live.turbidityNTU === undefined
             ? ({not_calibrated: 'Not calibrated', out_of_range: 'Outside reference range'}[live.turbidityNTUState] || '—')
             : `${live.turbidityNTU.toFixed(2)} NTU`;
-        $('adc-note').textContent = !live.fresh ? 'Waiting for fresh ADC data. Check the Mega connection.' :
-            'Enable the sensors to read ADC. Measurements pause during level-only or manual pumping.';
+        $('adc-note').textContent = !live.fresh ? 'Waiting for sensor readings.' :
+            'Live readings';
         if (fill) {
             $('ph-custom').checked = Boolean(state.profile.ph);
             $('ph-points').value = String(state.profile.ph?.points ?? 2);
