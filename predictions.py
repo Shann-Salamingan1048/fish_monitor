@@ -123,13 +123,20 @@ def format_float_status(value):
     return raw
 
 
-def record_sensor_history_locked(temp_value, turbidity_value, ph_value):
+def record_sensor_history_locked(temp_value, turbidity_value, ph_value, turbidity_adc=None):
     """Record numeric sensor history. config.sensor_lock must already be held."""
     now = time.time()
+    adc_history = config.sensor_history['turbidity_adc']
+    # Rebuild the observation window after a pause or missing sensor data.
+    gap_limit = config.HISTORY_SAMPLE_INTERVAL + config.QUALITY_MAX_PACKET_GAP_SECONDS
+    if turbidity_adc is None or (adc_history and now - adc_history[-1][0] > gap_limit):
+        adc_history.clear()
+        config.last_history_sample_at['turbidity_adc'] = 0
 
     for key, raw_value in (
         ("temp", temp_value),
         ("turbidity", turbidity_value),
+        ("turbidity_adc", turbidity_adc),
         ("ph", ph_value),
     ):
         value = get_prediction_numeric(key, raw_value)
@@ -319,7 +326,7 @@ def _prediction(history, key, name, unit, safe, critical, danger, trend):
     if directional_slope < minimum_slope:
         return None
 
-    minimum_r_squared = 0.45 if key == "turbidity" else 0.55
+    minimum_r_squared = 0.45 if key in {"turbidity", "turbidity_adc"} else 0.55
 
     if r_squared < minimum_r_squared:
         return None
@@ -398,6 +405,66 @@ def _prediction(history, key, name, unit, safe, critical, danger, trend):
         "confidence": r_squared,
         "direction_consistency": consistency,
     }
+
+
+def _turbidity_prediction(snapshot, history):
+    """Forecast the next worsening clarity category using the Mega's ADC ranges."""
+    adc = snapshot.get('turbidity_adc')
+    samples = history.get('turbidity_adc', [])
+    now = time.time()
+    gap_limit = config.HISTORY_SAMPLE_INTERVAL + config.QUALITY_MAX_PACKET_GAP_SECONDS
+    recent = [sample for sample in samples if now - sample[0] <= config.TREND_WINDOW_SECONDS + 5]
+    if adc is not None:
+        with config.prediction_lock:
+            config.active_prediction_alerts.pop('turbidity:rising', None)
+    ready = (isinstance(adc, (int, float)) and not isinstance(adc, bool)
+             and math.isfinite(adc) and 0 <= adc <= 1023 and len(recent) >= 6
+             and recent[-1][0] - recent[0][0] >= config.TREND_WINDOW_SECONDS
+             and now - recent[-1][0] <= gap_limit)
+    if not ready:
+        with config.prediction_lock:
+            config.active_prediction_alerts.pop('turbidity:cloudier', None)
+        # Preserve support for older firmware reporting actual numeric NTU.
+        if adc is None and get_prediction_numeric('turbidity', snapshot.get('turbidity')) is not None:
+            alert = _prediction(history, 'turbidity', 'Turbidity', ' NTU',
+                               config.TURBIDITY_LIMIT_NTU, config.TURBIDITY_CRITICAL_NTU,
+                               'become too cloudy', 'rising')
+            if alert:
+                target = 'Very Cloudy' if alert['limit'] >= config.TURBIDITY_CRITICAL_NTU else 'Cloudy'
+                alert['message'] = alert['short_message'] = (
+                    f"Water may become {target} in about {format_duration(alert['eta_seconds'])} if this trend continues.")
+            return alert
+        return None
+
+    ranges = calibration.effective_adc_ranges()
+    current = next(row for row in ranges if row['min'] <= adc <= row['max'])
+    current_rank = calibration.CATEGORIES.index(current['category'])
+    with config.prediction_lock:
+        cached = config.active_prediction_alerts.get('turbidity:cloudier')
+        if cached and current_rank <= calibration.CATEGORIES.index(cached['alert']['target_category']):
+            config.active_prediction_alerts.pop('turbidity:cloudier', None)
+
+    # Custom ADC ranges may place worsening water on either side of the reading.
+    worse = [row for row in ranges if row['category'] in ('Cloudy', 'Very Cloudy')
+             and calibration.CATEGORIES.index(row['category']) < current_rank]
+    for trend, edge in (('falling', 'max'), ('rising', 'min')):
+        if trend == 'falling':
+            ahead = [row for row in worse if row[edge] < adc]
+        else:
+            ahead = [row for row in worse if row[edge] > adc]
+        if not ahead:
+            continue
+        target = min(ahead, key=lambda row: abs(row[edge] - adc))
+        alert = _prediction(history, 'turbidity_adc', 'Turbidity', ' ADC',
+                            target[edge], target[edge], 'become ' + target['category'], trend)
+        if alert is not None:
+            alert.update(trend='cloudier', title='Water becoming cloudier',
+                         target_category=target['category'], source='turbidity_adc')
+            alert['message'] = alert['short_message'] = (
+                f"Water may become {target['label']} in about {format_duration(alert['eta_seconds'])} "
+                'if this trend continues.')
+            return alert
+    return None
 
 
 def _add_limit(
@@ -488,6 +555,9 @@ def _build_sensor_alerts_locked(sensor_snapshot, history_snapshot):
         if not sensor_control.enabled(key) or (calibration.active() and key in ('ph', 'turbidity')):
             sensor_snapshot[key] = 'DISABLED'
             history_snapshot[key] = []
+            if key == 'turbidity':
+                sensor_snapshot['turbidity_adc'] = None
+                history_snapshot['turbidity_adc'] = []
     if not sensor_control.all_floats_enabled():
         sensor_snapshot['float_stat'] = sensor_control.water_level()
     alerts = []
@@ -609,15 +679,14 @@ def _build_sensor_alerts_locked(sensor_snapshot, history_snapshot):
             else "warning"
         )
 
-        category = str(sensor_snapshot.get("turbidity", "")).strip()
-        categorical = calibration.is_custom_label(category) or category.lower() in {"very cloudy", "cloudy", "slightly cloudy", "muddy", "dirty"}
+        reading = sensor_snapshot.get("turbidity")
+        if calibration.is_custom_label(reading) or reading in calibration.CATEGORIES:
+            label = reading
+        else:
+            label = "Very Cloudy" if severity == "critical" else "Cloudy"
         _add_limit(
             alerts, "Turbidity", "Water clarity needs attention",
-            (f"Water clarity is {category}." if categorical else
-             f"Current turbidity reading is {turbidity:g} NTU."),
-            category if categorical else turbidity,
-            "" if categorical else " NTU",
-            "Clear" if categorical else config.TURBIDITY_LIMIT_NTU,
+            f"Water clarity is {label}.", label, "", None,
             severity,
         )
 
@@ -680,16 +749,7 @@ def _build_sensor_alerts_locked(sensor_snapshot, history_snapshot):
             "overheat",
             "rising",
         ),
-        _prediction(
-            history_snapshot,
-            "turbidity",
-            "Turbidity",
-            " NTU",
-            config.TURBIDITY_LIMIT_NTU,
-            config.TURBIDITY_CRITICAL_NTU,
-            "become too cloudy",
-            "rising",
-        ),
+        _turbidity_prediction(sensor_snapshot, history_snapshot),
         _prediction(
             history_snapshot,
             "ph",

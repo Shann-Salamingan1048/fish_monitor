@@ -117,3 +117,58 @@ def test_admin_api_exposes_both_readings(monkeypatch):
     live=client.get('/api/developer/calibration').json['calibration']['live']
     assert live['turbidityADC']==700 and live['turbidityNTU']==100
     assert live['turbidityNTUState']=='calibrated'
+
+
+def test_calibration_only_ntu_and_dashboard_categories(clock):
+    from gui_snapshot import build_snapshot
+    client = flask_app.test_client()
+    def check(category, ntu=None):
+        for snapshot in (client.get('/api/sensors').json, build_snapshot()[1]):
+            assert snapshot['turbidity'] == category
+            assert 'turbidityNTU' not in snapshot and 'turbidityNTUState' not in snapshot
+        assert calibration.status()['live']['turbidityNTU'] == ntu
+    packet(ta='770')
+    check('Clear')
+    packet(ta='1023', clarity='Very Clear')
+    check('Very Clear')
+    install()
+    packet(ta='700')
+    check('Warning custom', 100)
+    assert client.get('/api/sensors').json['clarityLabels'] == ['Clear custom', 'Warning custom', 'Critical custom']
+    packet(ta='900')
+    check('Clear custom', 0)
+    packet(ta='1000')
+    check('Clear custom')
+    clock[0] += 5
+    check('WAITING')
+    calibration.set_active(True)
+    packet(ta='700')
+    check('WAITING', 100)
+    calibration.set_active(False)
+    sensor_control.apply({'turbidity': False})
+    packet(ta='700')
+    check('DISABLED')
+
+
+@pytest.mark.parametrize('reading,category', [('18.5 NTU','Clear'), ('300 NTU','Cloudy'), ('600 NTU','Very Cloudy')])
+def test_legacy_numeric_readout(reading, category):
+    from gui_snapshot import build_snapshot
+    packet(ta='WAITING', clarity=reading)
+    assert build_snapshot()[1]['turbidity'] == category
+
+
+def test_two_labels_with_same_category_remain_distinct():
+    from gui_snapshot import build_snapshot
+    install(dict(ph=None, turbidity=[
+        dict(min=0, max=300, label='Hazy 2', category='Cloudy'),
+        dict(min=301, max=600, label='Hazy 1', category='Cloudy'),
+        dict(min=601, max=1023, label='Clear', category='Clear'),
+    ]))
+    client = flask_app.test_client()
+    for adc, expected in [(200, 'Hazy 2'), (500, 'Hazy 1')]:
+        packet(ta=str(adc))
+        view = client.get('/api/sensors').json
+        assert view['clarityLabels'] == ['Clear', 'Hazy 1', 'Hazy 2']
+        assert view['turbidity'] == build_snapshot()[1]['turbidity'] == expected
+        assert view['clarityCategory'] == 'Cloudy'
+        assert any(expected in alert['message'] for alert in view['alerts'])

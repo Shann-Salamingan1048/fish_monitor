@@ -112,6 +112,10 @@ def input_reconnected():
         _input_revision = None
         import calibration
         calibration.reset_readings()
+        config.sensor_history['turbidity_adc'].clear()
+        config.last_history_sample_at['turbidity_adc'] = 0
+        with config.prediction_lock:
+            config.active_prediction_alerts.pop('turbidity:cloudier', None)
         import water_control
         water_control.reset_confirmation()
         for key in _raw:
@@ -200,6 +204,8 @@ def apply(changes):
             _raw[key] = None
             if key == 'turbidity':
                 _raw['turbidity_adc'] = None
+                config.sensor_history['turbidity_adc'].clear()
+                config.last_history_sample_at['turbidity_adc'] = 0
             if key in config.sensor_history:
                 config.sensor_history[key].clear()
                 config.last_history_sample_at[key] = 0
@@ -218,9 +224,12 @@ def get_status():
     with config.sensor_lock:
         import water_control
         policy = water_control.get_sensor_policy()
+        import calibration
         sensors = {}
         for key, (label, effect) in SENSORS.items():
             raw = _raw[key]
+            if key == 'turbidity' and raw is not None:
+                raw = calibration.clarity_readout(raw) if policy[key] else 'PAUSED'
             status = ('disabled' if not _enabled[key] else
                       'paused' if key in ('temp', 'ph', 'turbidity') and not policy[key] else
                       'waiting' if raw is None or str(raw).upper() in ('WAITING', '--', 'DISABLED') else

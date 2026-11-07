@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AquaPi · {{ title }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=32">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=35">
+  {% block head %}{% endblock %}
 </head>
 <body class="audience-mode" data-page="{{ page }}">
 <div class="dashboard app-shell">
@@ -27,7 +28,7 @@
     {% block content %}{% endblock %}
   </main>
 </div>
-<script src="{{ url_for('static', filename='script.js') }}?v=33"></script>
+<script src="{{ url_for('static', filename='script.js') }}?v=37"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -24,7 +24,7 @@ Calibration is stored in the Pi database. Saving or loading NTU ranges converts 
 
 Outside the reference ADC span, numeric NTU is withheld. In NTU mode, ADC below the cloudiest reference uses the highest-NTU range's category; ADC above the clearest reference uses the lowest-NTU range's category. Set those extreme categories appropriately for your tested setup. ADC mode always uses its configured ADC ranges.
 
-Very Cloudy starts critical correction after the configured confirmation period. Cloudy and Slightly Cloudy warn and can continue an existing correction; Clear and Very Clear end it. Calibration mode, sensor disabling, float priority, pH settling and System Off retain their existing behavior. Configuration is resent after reconnection; the Mega retains its existing heartbeat-stop behavior on communication loss.
+Cloudy and Very Cloudy can start correction after the configured confirmation period. Slightly Cloudy can continue an existing correction; Clear and Very Clear end it. Calibration mode, sensor disabling, float priority, pH settling and System Off retain their existing behavior. Configuration is resent after reconnection; the Mega retains its existing heartbeat-stop behavior on communication loss.
 
 ## Sampling and serial diagnostic
 

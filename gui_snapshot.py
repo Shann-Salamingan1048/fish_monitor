@@ -2,6 +2,7 @@
 import logging
 import queue
 import threading
+import calibration
 import config
 import sensor_control
 from predictions import build_sensor_alerts
@@ -11,11 +12,13 @@ def build_snapshot():
     with config.sensor_lock:
         version = config.settings_version
         readings = config.sensor_data.copy()
+        clarity = calibration.clarity_readout(readings.get("turbidity"))
         history = {key: list(values) for key, values in config.sensor_history.items()}
         controls = sensor_control.get_status()
         import water_control
         controls["waterControl"] = water_control.get_status()
     alerts = build_sensor_alerts(readings, history)
+    readings["turbidity"] = clarity
     return version, readings, controls, alerts
 
 

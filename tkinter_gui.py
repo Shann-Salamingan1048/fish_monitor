@@ -356,7 +356,7 @@ class FocusedMonitorApp:
         )
         self._create_value_card(
             values_grid, "turbidity", 1, 0,
-            "Turbidity", "TB",
+            "Water Clarity", "TB",
             "--", "Water clarity reading",
             self.accent_prediction
         )
@@ -1724,6 +1724,8 @@ class FocusedMonitorApp:
         return alert.get("message") or "Sensor value needs attention."
 
     def _alert_meta(self, alert):
+        if alert.get("sensor") == "Turbidity":
+            return ""
         parts = []
         value = alert.get("value")
         limit = alert.get("limit")

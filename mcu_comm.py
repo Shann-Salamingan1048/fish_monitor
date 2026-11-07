@@ -210,7 +210,8 @@ class MCUCommunicator:
             sensor_data['float_stat'] = float_val
             record_sensor_history_locked(sensor_data['temp'],
                                          None if calibration.active() else sensor_data['turbidity'],
-                                         None if calibration.active() else sensor_data['ph'])
+                                         None if calibration.active() else sensor_data['ph'],
+                                         turbidity_adc=None if calibration.active() else sensor_data['turbidity_adc'])
             snapshot = sensor_data.copy()
             history = {key: list(values) for key, values in sensor_history.items()}
             alerts = build_sensor_alerts(snapshot, history)

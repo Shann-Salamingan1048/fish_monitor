@@ -27,7 +27,7 @@ Headless operation:
 python main.py --headless
 ```
 
-The local website is available at `http://127.0.0.1:5000`. Existing Cloudflare tunnel configuration continues to point to that service. Close Arduino Serial Monitor while AquaPi owns the USB port.
+The Pi can open `http://127.0.0.1:5000`. On a phone connected to the same Wi-Fi, open `http://<Pi-Wi-Fi-IPv4>:5000` while AquaPi is running. Use the Pi’s current address from its Wi-Fi details. Existing Cloudflare tunnel configuration continues to point to that service. Close Arduino Serial Monitor while AquaPi owns the USB port.
 
 One Mega does not guarantee a cure for pump-induced USB disconnections. Electrical interference or supply/ground disturbances still need hardware diagnosis if they persist.
 
@@ -38,3 +38,13 @@ View live ADC and calibrated NTU together. Choose ADC or NTU clarity ranges, add
 ## Scheduled water changes
 
 Create weekly or everyday drain/refill schedules in Web → Water Changes → Water-change schedule, or GUI → Controls & settings → Water pumps → Water-change schedule. Both use the same database. This feature requires the updated combined Mega sketch. See `WATER_CHANGE_SCHEDULE.md` for setup, durations, float protection and skipped-run behavior.
+
+## Turbidity predictions
+
+The Pi uses recent raw ADC readings and the saved clarity ranges to forecast Cloudy or Very Cloudy. These predictions appear in desktop and web notifications after the configured Prediction history interval and sufficient consistent readings. Calibration, disabled sensors, missing readings and reconnects reset this observation period. ADC forecasts also follow ranges configured with NTU reference calibration.
+
+## Aquarium overview
+
+The web overview follows the tank timezone (Asia/Manila by default). Automatic scene lighting uses dawn from 05:00, day from 07:00, dusk from 17:00 and night from 19:00. Scene previews and Pause motion are local to the browser. The scene is illustrative and the Camera page shows the live tank.
+
+Real-Time Readout shows water temperature, pH, level and clarity. Expand a reading to inspect its recent range or open its graph. The clarity readout, scale and graph use the display names of the active turbidity calibration ranges. The animated fish follow Pause motion and the device’s reduced-motion setting. The clarity graph shows the last 30 samples collected on the Graphs page. For raw ADC and estimated NTU, open Developer option and find Turbidity calibration.

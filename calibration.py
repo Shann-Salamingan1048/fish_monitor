@@ -193,7 +193,7 @@ def active():
 
 
 def _clear_history():
-    for key in ('ph', 'turbidity'):
+    for key in ('ph', 'turbidity', 'turbidity_adc'):
         config.sensor_history[key].clear()
         config.last_history_sample_at[key] = 0
     config.clear_prediction_alert_cache()
@@ -292,18 +292,59 @@ def apply_packet(fields):
             fields[field] = 'PAUSED'
 
 
+def _ntu_reading(adc):
+    points = _profile.get('turbidityPoints')
+    ntu = estimate_ntu(adc, points)
+    state = ('unavailable' if adc is None else 'not_calibrated' if not points
+             else 'out_of_range' if ntu is None else 'calibrated')
+    return {'turbidityNTU': ntu, 'turbidityNTUState': state}
+
+
+def clarity_labels():
+    """Display names from the active calibration, ordered from clearest to cloudiest."""
+    rows = _profile['turbidity'] or DEFAULT_RANGES
+    # Keep neighboring ranges in measurement order when they share a category.
+    first = CATEGORIES.index(rows[0]['category'])
+    last = CATEGORIES.index(rows[-1]['category'])
+    if first < last or (first == last and _profile.get('turbidityUnit', 'ADC') == 'ADC'):
+        rows = reversed(rows)
+    ordered = sorted(rows, key=lambda row: CATEGORIES.index(row['category']), reverse=True)
+    return [row['label'] for row in ordered]
+
+
+def clarity_readout(reading):
+    """Return the active range's display name, or an acquisition status."""
+    text = str(reading).strip().upper()
+    if text in {'PAUSED', 'DISABLED', 'WAITING', 'ERROR'}:
+        return text
+    received = _live['receivedAt']
+    if _maintenance or received is None or time.monotonic() - received > config.QUALITY_MAX_PACKET_GAP_SECONDS:
+        return 'WAITING'
+    rows = _profile['turbidity'] or DEFAULT_RANGES
+    for row in rows:
+        if str(reading).strip().casefold() == row['label'].casefold():
+            return row['label']
+    if _profile['turbidity']:
+        return 'WAITING'
+    # Older uncalibrated firmware may report numeric NTU directly.
+    try:
+        ntu = float(text.removesuffix('NTU').strip())
+    except ValueError:
+        return 'WAITING'
+    if not math.isfinite(ntu) or ntu < 0:
+        return 'WAITING'
+    if ntu >= config.TURBIDITY_CRITICAL_NTU:
+        return 'Very Cloudy'
+    return 'Cloudy' if ntu >= config.TURBIDITY_LIMIT_NTU else 'Clear'
+
+
 def status():
     with config.sensor_lock:
         age = None if _live['receivedAt'] is None else max(0, time.monotonic() - _live['receivedAt'])
         fresh = age is not None and age <= config.QUALITY_MAX_PACKET_GAP_SECONDS
         adc = _live['turbidityADC'] if fresh else None
-        points = _profile.get('turbidityPoints')
-        ntu = estimate_ntu(adc, points)
-        ntu_state = ('unavailable' if adc is None else 'not_calibrated' if not points
-                     else 'out_of_range' if ntu is None else 'calibrated')
         return dict(profile=copy.deepcopy(_profile), defaults=copy.deepcopy(DEFAULT_RANGES),
                     categories=list(CATEGORIES), active=_maintenance,
                     live={'phADC': _live['phADC'] if fresh else None,
-                          'turbidityADC': adc, 'turbidityNTU': ntu,
-                          'turbidityNTUState': ntu_state,
+                          'turbidityADC': adc, **_ntu_reading(adc),
                           'ageSeconds': age, 'fresh': fresh})

@@ -33,7 +33,7 @@ from config import (
     send_to_output_serial_ports, build_camera_serial_message,
     load_persisted_settings, clear_prediction_alert_cache
 )
-from feeding_scheduler import feeding_schedule_response
+from feeding_scheduler import feeding_schedule_response, get_feeding_zone
 from predictions import build_sensor_alerts, format_float_status
 import water_control
 import sensor_control
@@ -143,7 +143,7 @@ def website_viewer_stop():
 
 @flask_app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", tank_timezone=get_feeding_zone().key)
 
 
 @flask_app.route("/camera")
@@ -401,6 +401,9 @@ def sensor_controls():
 def sensors():
     with sensor_lock:
         sensor_snapshot = sensor_data.copy()
+        clarity = calibration.clarity_readout(sensor_snapshot.get("turbidity"))
+        clarity_labels = calibration.clarity_labels()
+        category = calibration.category_for_label(clarity) if clarity in clarity_labels else None
         history_snapshot = {
             key: list(values)
             for key, values in sensor_history.items()
@@ -412,7 +415,10 @@ def sensors():
 
     response_data = sensor_snapshot.copy()
     response_data["float_stat"] = format_float_status(response_data.get("float_stat"))
-    response_data["turbidityCategory"] = calibration.category_for_label(sensor_snapshot.get("turbidity"))
+    response_data["turbidity"] = clarity
+    response_data["turbidityCategory"] = category
+    response_data["clarityCategory"] = category
+    response_data["clarityLabels"] = clarity_labels
     response_data["turbidityCustom"] = calibration.is_custom_label(sensor_snapshot.get("turbidity"))
     response_data["alerts"] = alerts
     response_data["sensorControls"] = controls

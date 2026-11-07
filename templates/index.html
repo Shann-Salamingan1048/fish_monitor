@@ -1,74 +1,55 @@
 {% extends "base.html" %}
 {% set page = "index" %}
-{% set title = "Overview" %}
+{% set title = "Real-Time Readout" %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='aquarium.css') }}?v=3">{% endblock %}
 {% block content %}
-<section class="card status-card">
-                <div class="card-title">
-                    <div class="icon-box blue-icon">
-                        <i class="fas fa-bolt"></i>
-                    </div>
-                    <div>
-                        <h2>System Status</h2>
-                        
-                    </div>
-                </div>
-
-                <div class="badge-grid">
-                    <div class="badge orange">
-                        <div class="badge-top">
-                            <span><i class="fas fa-thermometer-half"></i> Temperature</span>
-                            <b id="temp-val">--°C</b>
-                        </div>
-                        <div class="progress-bar">
-                            <div id="temp-bar" class="fill" style="width:0%"></div>
-                        </div>
-                    </div>
-
-                    <div class="badge purple">
-                        <div class="badge-top">
-                            <span><i class="fas fa-clock"></i> Current Time</span>
-                            <b id="time-val">--:--</b>
-                        </div>
-                    </div>
-
-                    <div class="badge green-light">
-                        <div class="badge-top">
-                            <span><i class="fas fa-vial"></i> pH Level</span>
-                            <b id="ph-val" class="tag-green">--</b>
-                        </div>
-                    </div>
-
-                    <div class="badge blue-light">
-                        <div class="badge-top">
-                            <span><i class="fas fa-sync-alt"></i> Feed Mode</span>
-                            <b id="feed-mode-val" class="tag-purple">Manual</b>
-                        </div>
-                    </div>
-
-                    <div class="badge blue">
-                        <div class="badge-top">
-                            <span><i class="fas fa-tint"></i> Water Level</span>
-                            <b id="water-val" class="tag-blue">--</b>
-                        </div>
-                    </div>
-
-                    <div class="badge green-mint">
-                        <div class="badge-top">
-                            <span><i class="fas fa-eye"></i> Water Clarity</span>
-                            <b id="clarity-val" class="tag-mint">--</b>
-                        </div>
-                    </div>
-
-                    <div class="badge blue">
-                        <div class="badge-top">
-                            <span><i class="fas fa-water"></i> Water Pumps</span>
-                            <b id="pump-mode-val" class="tag-blue">Auto Ready</b>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="fan-status-summary"><strong>Cooling fan</strong><p data-fan-status role="status">—</p></div>
-                <p id="quality-confirmation-status" class="confirmation-note" role="status" hidden></p>
+<section class="reef" data-light="day" data-zone="{{ tank_timezone }}" aria-labelledby="reef-title">
+  <div class="reef-shade" aria-hidden="true"></div>
+  <div class="reef-ripple" aria-hidden="true"></div>
+  <div class="reef-bubbles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="reef-school" aria-hidden="true">
+    {% for fish in ['clownfish','blue-tang','yellow-tang'] %}
+    <div class="swim-lane"><div class="swim-turn"><img src="{{ url_for('static', filename='fish/' ~ fish ~ '.webp') }}" alt="" draggable="false"></div></div>
+    {% endfor %}
+  </div>
+  <section class="reef-instruments" aria-labelledby="reef-title">
+    <div class="reef-panel-head">
+      <div><h2 id="reef-title">Real-Time Readout</h2><div class="reef-clock"><span id="time-val">—</span> · {{ tank_timezone }}</div></div>
+      <span id="reef-signal">Waiting</span>
+    </div>
+    <div class="probe-list">
+      {% for key, label, symbol, graph in [('temp','Water Temperature','°','tempChart'),('ph','Water pH','pH','phChart'),('water','Water Level','≋','floatChart'),('clarity','Water Clarity (Turbidity)','◈','turbidityChart')] %}
+      <details class="probe probe-{{ key }}" data-probe="{{ key }}">
+        <summary>
+          <span class="probe-label"><i aria-hidden="true">{{ symbol }}</i>{{ label }}</span>
+          <span class="probe-state">Waiting</span>
+          <strong id="{{ key }}-val">—</strong>
+          <canvas width="160" height="48" aria-hidden="true"></canvas>
+          <span class="probe-scale" aria-hidden="true"><i hidden></i></span>
+          <span class="probe-ends"><span></span><span></span></span>
+        </summary>
+        <div class="probe-detail"><span>Waiting for readings</span><a href="/graphs#{{ graph }}">View graph ↗</a></div>
+      </details>
+      {% endfor %}
+    </div>
+    <a class="reef-trends" href="/graphs">Trend history <span aria-hidden="true">↗</span></a>
+  </section>
+  <div class="reef-dock">
+    <label for="reef-light">Scene lighting</label>
+    <select id="reef-light">
+      <option value="auto">Automatic</option><option value="dawn">Dawn</option>
+      <option value="day">Day</option><option value="dusk">Dusk</option><option value="night">Night</option>
+    </select><span id="reef-period"></span>
+    <button id="reef-motion" aria-pressed="false" type="button">Pause motion</button>
+    <button id="reef-ripple" type="button">Ripple water</button>
+  </div>
+</section>
+<section class="reef-equipment" aria-label="Equipment">
+  <a href="/feeding"><span>Feeding</span><strong id="feed-mode-val">—</strong></a>
+  <a href="/water-changes"><span>Water pumps</span><strong id="pump-mode-val">—</strong></a>
+  <a href="/cooling-fan"><span>Cooling fan</span><strong data-fan-status>—</strong></a>
+</section>
+<p id="quality-confirmation-status" class="confirmation-note" role="status" hidden></p>
                 <div class="smart-alert-panel">
                     <div class="smart-alert-head">
                         <div>
@@ -89,5 +70,5 @@
                         </div>
                     </div>
                 </div>
-            </section>
 {% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='aquarium.js') }}?v=4"></script>{% endblock %}

@@ -63,12 +63,14 @@ MAX_TK_ALERTS = 5
 NOISE_TOLERANCE = {
     "temp": 0.05,
     "turbidity": 1.0,
+    "turbidity_adc": 2.0,
     "ph": 0.01
 }
 
 MIN_RISE_PER_SECOND = {
     "temp": 0.005,
     "turbidity": 0.20,
+    "turbidity_adc": 1.0,
     "ph": 0.001
 }
 
@@ -84,12 +86,14 @@ sensor_data = {
 sensor_history = {
     "temp": [],
     "turbidity": [],
+    "turbidity_adc": [],
     "ph": []
 }
 
 last_history_sample_at = {
     "temp": 0.0,
     "turbidity": 0.0,
+    "turbidity_adc": 0.0,
     "ph": 0.0
 }
 

@@ -65,7 +65,8 @@ let labels = [];
 let tempData = [];
 let phData = [];
 let floatData = [];
-let turbidityData = [];
+const turbidityData = [];
+let clarityLevels = [];
 let cameraHeartbeatTimer = null;
 let cameraViewerActive = false;
 let cameraViewerId = null;
@@ -77,14 +78,6 @@ let PREDICTION_ALERT_DURATION_SECONDS = 30;
 // Smooth dashboard refresh state.
 // Prevents overlapping /api/sensors requests on slower Raspberry Pi systems.
 let dashboardRequestRunning = false;
-
-// Used to avoid adding duplicate graph points when sensor values have not changed.
-let lastDashboardValues = {
-    temp: null,
-    ph: null,
-    float: null,
-    turbidity: null
-};
 
 // -------------------------
 // Smart Notification and Prediction Limits
@@ -882,41 +875,61 @@ function makeChart(canvasId, label, dataArray) {
     const chart = {update() {
         const rect = canvas.getBoundingClientRect();
         const width = Math.max(240, rect.width), height = 240;
-        const ratio = window.devicePixelRatio || 1;
-        canvas.width = width * ratio; canvas.height = height * ratio;
-        const ctx = canvas.getContext('2d'); ctx.scale(ratio, ratio);
+        const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        const pixelWidth = Math.round(width * ratio), pixelHeight = Math.round(height * ratio);
+        if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+            canvas.width = pixelWidth;
+            canvas.height = pixelHeight;
+        }
+        const ctx = canvas.getContext('2d'); ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         ctx.clearRect(0, 0, width, height);
+        const clarity = canvasId === 'turbidityChart';
+        const categories = canvasId === 'floatChart' ? ['Very low','Low','Normal','Overflow'] : clarity ? clarityLevels : null;
         const displayData = canvasId === 'tempChart' ? dataArray.map(v => v === null ? null : temperatureToDisplay(v)) : dataArray;
         const valid = displayData.filter(v => v !== null && Number.isFinite(v));
-        ctx.font = '12px Arial'; ctx.fillStyle = '#526477';
+        ctx.font = '12px Arial'; ctx.textAlign = 'left'; ctx.fillStyle = '#bbcbdf';
         if (canvasId === 'tempChart') ctx.fillText('Temperature (°' + temperatureUnit + ')', 55, 12);
-        if (!valid.length) { ctx.fillText('Waiting for sensor readings…', 20, 40); return; }
-        const water = canvasId === 'floatChart';
-        let lo = water ? 0 : Math.min(...valid), hi = water ? 3 : Math.max(...valid);
+        if (clarity) {
+            const latest = displayData[displayData.length - 1];
+            const reading = clarityLevels[latest] || 'Waiting for clarity';
+            document.getElementById('clarity-plot-status').textContent = reading;
+            canvas.setAttribute('aria-label', 'Turbidity history, ' + reading);
+        }
+        if (!valid.length) { ctx.fillText('Waiting for readings…', 20, 40); return; }
+        let lo = categories ? 0 : Math.min(...valid), hi = categories ? categories.length - 1 : Math.max(...valid);
         const pad = Math.max((hi - lo) * 0.15, 0.1);
-        if (!water) { lo -= pad; hi += pad; }
-        const left = water ? 82 : 55, right = width - 14, top = 20, bottom = 204;
-        const y = v => bottom - (v - lo) / (hi - lo) * (bottom - top);
+        if (!categories) { lo -= pad; hi += pad; }
+        const left = categories ? 88 : 55, right = width - 14, top = 20, bottom = 204;
+        const y = v => hi === lo ? (bottom + top) / 2 : bottom - (v - lo) / (hi - lo) * (bottom - top);
         const x = i => left + i / Math.max(dataArray.length - 1, 1) * (right - left);
-        const ticks = water ? 3 : 4;
+        const ticks = categories ? categories.length - 1 : 4;
         for (let i = 0; i <= ticks; i++) {
-            const value = lo + (hi - lo) * i / ticks;
-            ctx.strokeStyle = '#e4eaf0'; ctx.beginPath(); ctx.moveTo(left, y(value)); ctx.lineTo(right, y(value)); ctx.stroke();
-            ctx.fillStyle = '#526477'; ctx.fillText(water ? ['Very low','Low','Normal','Overflow'][i] : value.toFixed(1), 3, y(value) + 4);
+            const value = categories ? i : lo + (hi - lo) * i / ticks;
+            if (clarity && categories) {
+                const band = (bottom - top) / Math.max(ticks, 1);
+                const bandTop = Math.max(top, y(value) - band / 2);
+                ctx.fillStyle = ['#103237','#13382f','#332f20','#3c2b20','#3b202e'][Math.round(i * 4 / Math.max(ticks, 1))];
+                ctx.fillRect(left, bandTop, right - left, Math.min(bottom, y(value) + band / 2) - bandTop);
+            }
+            ctx.strokeStyle = '#314153'; ctx.beginPath(); ctx.moveTo(left, y(value)); ctx.lineTo(right, y(value)); ctx.stroke();
+            if (i === ticks || i % Math.max(1, Math.ceil(ticks / 8)) === 0) {
+                ctx.fillStyle = '#bbcbdf';
+                ctx.fillText(categories ? categories[i] : value.toFixed(1), 3, y(value) + 4, left - 9);
+            }
         }
         ctx.strokeStyle = colors[canvasId]; ctx.lineWidth = 2; ctx.beginPath();
         let previous = null;
         displayData.forEach((v, i) => {
             if (v === null || !Number.isFinite(v)) { previous = null; return; }
             if (previous === null) ctx.moveTo(x(i), y(v));
-            else { if (water) ctx.lineTo(x(i), y(previous)); ctx.lineTo(x(i), y(v)); }
+            else { if (categories) ctx.lineTo(x(i), y(previous)); ctx.lineTo(x(i), y(v)); }
             previous = v;
         }); ctx.stroke();
         displayData.forEach((v, i) => { if (v !== null && Number.isFinite(v)) {ctx.fillStyle = colors[canvasId]; ctx.beginPath(); ctx.arc(x(i),y(v),2,0,Math.PI*2);ctx.fill();} });
-        ctx.fillStyle = '#526477';
+        ctx.fillStyle = '#bbcbdf';
         ctx.fillText(labels[0] || '', left, 229);
         ctx.textAlign = 'right'; ctx.fillText(labels[labels.length-1] || '', right, 229);
-        canvas.setAttribute('aria-label', label + (canvasId === 'tempChart' ? ' °' + temperatureUnit : '') + ', latest reading: ' + valid[valid.length-1]);
+        if (!clarity) canvas.setAttribute('aria-label', label + (canvasId === 'tempChart' ? ' °' + temperatureUnit : '') + ', latest reading: ' + valid[valid.length-1]);
     }};
     window.addEventListener('resize', () => chart.update());
     chart.update();
@@ -1082,10 +1095,10 @@ function renderSmartAlerts(data) {
 
         alertList.innerHTML = alerts.map(alert => {
             const severity = getSafeSeverity(alert.severity);
-            const valueText = Number.isFinite(Number(alert.value))
+            const valueText = alert.sensor !== "Turbidity" && Number.isFinite(Number(alert.value))
                 ? "<span><i class=\"fas fa-gauge-high\"></i> " + escapeHtml((['°C', '°F'].includes(alert.unit) ? Number(alert.value).toFixed(1) : formatNumber(Number(alert.value)))) + escapeHtml(alert.unit || "") + "</span>"
                 : "";
-            const limitText = Number.isFinite(Number(alert.limit))
+            const limitText = alert.sensor !== "Turbidity" && Number.isFinite(Number(alert.limit))
                 ? "<span><i class=\"fas fa-sliders\"></i> Limit: " + escapeHtml((['°C', '°F'].includes(alert.unit) ? Number(alert.limit).toFixed(1) : formatNumber(Number(alert.limit)))) + escapeHtml(alert.unit || "") + "</span>"
                 : "";
             const lastsSeconds = alert.lasts_seconds ?? alert.lastsSeconds;
@@ -1161,91 +1174,36 @@ async function updateDashboard() {
             }
         }
 
-        const tempVal = document.getElementById("temp-val");
-        const tempBar = document.getElementById("temp-bar");
-        const waterVal = document.getElementById("water-val");
-        const waterBar = document.getElementById("water-bar");
-        const clarityVal = document.getElementById("clarity-val");
-        const phVal = document.getElementById("ph-val");
-        const timeVal = document.getElementById("time-val");
-
         latestDisplayData = data;
-        const tempText = temperatureText(data.temp);
         const waterLevelText = formatWaterLevelText(data.float_stat);
-        const turbidityText = String(data.turbidity ?? "--");
-        const phText = String(data.ph ?? "--");
-
-        // Only touch the DOM when the displayed value actually changed.
-        if (tempVal && tempVal.innerText !== tempText) {
-            tempVal.innerText = tempText;
-        }
-
-        if (waterVal && waterVal.innerText !== waterLevelText) {
-            waterVal.innerText = waterLevelText;
-        }
-
-        if (clarityVal) {
-            updateClarityIndicator(turbidityText, data.turbidityCategory);
-        }
-
-        if (phVal && phVal.innerText !== phText) {
-            phVal.innerText = phText;
-        }
-
-        if (timeVal) {
-            timeVal.innerText = new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit"
-            });
+        const signal = document.getElementById('reef-signal');
+        if (signal) {
+            const live = !data.connection?.stale && !data.sensorControls?.allDisabled;
+            signal.textContent = data.sensorControls?.allDisabled ? 'Sensors off' : live ? 'Live' : 'Offline';
+            signal.dataset.live = String(live);
         }
 
         const tempNumber = data.connection?.stale ? null : parseSensorNumber(data.temp);
         const phNumber = data.connection?.stale ? null : parseSensorNumber(data.ph);
         const floatNumber = data.connection?.stale ? null : parseWaterLevelState(waterLevelText);
-        const turbidityNumber = data.connection?.stale || data.turbidityCustom ? null : parseSensorNumber(data.turbidity);
-
-        if (tempBar && tempNumber === null) tempBar.style.width = "0%";
-        if (waterBar && floatNumber === null) waterBar.style.width = "0%";
-        if (tempBar && tempNumber !== null) {
-            const width =
-                Math.min(Math.max(tempNumber, 0), 100) + "%";
-
-            if (tempBar.style.width !== width) {
-                tempBar.style.width = width;
-            }
+        const levels = data.clarityLabels || [];
+        const scaleChanged = levels.length !== clarityLevels.length || levels.some((name, i) => name !== clarityLevels[i]);
+        if (scaleChanged) {
+            clarityLevels = levels;
+            turbidityData.fill(null);
         }
+        const categoryIndex = clarityLevels.indexOf(data.turbidity);
+        const turbidityNumber = data.connection?.stale || categoryIndex < 0 ? null : categoryIndex;
 
-        if (waterBar && floatNumber !== null) {
-            const width = (floatNumber > 0 ? 100 : 12) + "%";
-
-            if (waterBar.style.width !== width) {
-                waterBar.style.width = width;
-            }
-        }
-
+        if (signal) window.dispatchEvent(new CustomEvent('aquapi-readings', {detail: {
+            data, scaleChanged, values: {temp:tempNumber, ph:phNumber, water:floatNumber, clarity:turbidityNumber}
+        }}));
         renderSmartAlerts(data);
 
         const hasGraphPage =
             Object.values(graphCharts).some(chart => chart !== null);
 
         if (!hasGraphPage) return;
-
-        const valuesChanged =
-            tempNumber !== lastDashboardValues.temp ||
-            phNumber !== lastDashboardValues.ph ||
-            floatNumber !== lastDashboardValues.float ||
-            turbidityNumber !== lastDashboardValues.turbidity;
-
-        // Keep the dashboard responsive without filling charts with identical
-        // repeated points every second.
-        // Sample at a fixed interval, including unchanged readings.
-
-        lastDashboardValues = {
-            temp: tempNumber,
-            ph: phNumber,
-            float: floatNumber,
-            turbidity: turbidityNumber
-        };
 
         const label = new Date().toLocaleTimeString([], {
             hour: "2-digit",
@@ -1273,6 +1231,13 @@ async function updateDashboard() {
             if (chart) chart.update();
         });
     } catch (err) {
+        const signal = document.getElementById('reef-signal');
+        if (signal) {
+            signal.textContent = 'Offline'; signal.dataset.live = 'false';
+            window.dispatchEvent(new CustomEvent('aquapi-readings', {detail: {
+                data:{connection:{stale:true}}, values:{temp:null, ph:null, water:null, clarity:null}
+            }}));
+        }
         console.error("Sensor update failed:", err);
     } finally {
         dashboardRequestRunning = false;
@@ -1299,30 +1264,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setInterval(() => loadAuthStatus(false), 30000);
     window.addEventListener("pagehide", releaseWebsiteViewerSlot);
 });
-
-
-// Turbidity clarity indicator
-function updateClarityIndicator(value, category = value) {
-    const element = document.getElementById("clarity-val");
-    if (!element) return;
-
-    const text = String(value || "--");
-
-    element.innerText = text;
-    element.className = "tag-mint";
-
-    if (["PAUSED", "DISABLED", "WAITING", "ERROR"].includes(text.toUpperCase())) {
-        element.className = "tag-blue";
-    } else if (String(category).includes("Very Cloudy")) {
-        element.className = "tag-danger";
-    } else if (String(category).includes("Slightly Cloudy")) {
-        element.className = "tag-yellow";
-    } else if (String(category).includes("Cloudy")) {
-        element.className = "tag-warning";
-    } else if (String(category).includes("Clear")) {
-        element.className = "tag-green";
-    }
-}
 
 
 let feederRequestRunning = false;
