@@ -1,0 +1,94 @@
+.page-index .page-heading {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.reef {position:relative;isolation:isolate;overflow:hidden;display:grid;align-content:space-between;gap:20px;padding:clamp(20px,3vw,40px);min-height:clamp(510px,68vh,740px);border-radius:20px;border:1px solid #41646c;background:#176674 url('reef.webp') center 54%/cover no-repeat;color:white}
+.reef-shade,.reef-bubbles {position:absolute;inset:0;pointer-events:none;z-index:-1}
+.reef-shade {background:linear-gradient(115deg,#01242fbd,transparent 70%),linear-gradient(0deg,#001b29a6,transparent 37%);background-color:var(--tint,transparent);transition:background-color .65s ease}
+.reef[data-light="dawn"] {--tint:#f3ad7c48}
+.reef[data-light="dusk"] {--tint:#7237626b}
+.reef[data-light="night"] {--tint:#041633c9}
+.reef-panel-head,.reef-dock,.reef-trends {display:flex;align-items:center;gap:10px}
+.reef {padding:clamp(12px,1.5vw,24px);min-height:clamp(560px,76vh,820px);border-color:var(--line)}
+.reef-instruments,.reef-dock {background:#0a1424f5;border:1px solid #34445a;border-radius:14px;box-shadow:0 10px 28px #03111f44}
+.reef-instruments {width:min(354px,100%);align-self:start;overflow:hidden}
+.reef-panel-head {padding:16px 16px 13px;justify-content:space-between;border-bottom:1px solid var(--line)}
+.reef-panel-head h2 {font-size:1.18rem;letter-spacing:-.02em;color:var(--header-text);margin:0}
+.reef-clock {font:11px ui-monospace,monospace;color:var(--text);margin-top:5px}
+#reef-signal,.probe-state {font:11px ui-monospace,monospace;color:var(--text)}
+#reef-signal::before,.probe-state::before {content:"";display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;background:currentColor}
+#reef-signal[data-live="true"],.probe[data-state="live"] .probe-state {color:var(--good)}
+.probe-list {display:grid;gap:7px;padding:10px}
+.probe {--ink:#49cdff;background:#101d30;border:1px solid #2c3b50;border-radius:9px;color:var(--header-text)}
+.probe-ph {--ink:#5ce3b1}.probe-water {--ink:#83adff}.probe-clarity {--ink:#ccafff}
+.probe:hover,.probe[open] {border-color:var(--ink)}
+.probe summary {list-style:none;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:7px;padding:10px 12px}
+.probe summary::-webkit-details-marker {display:none}
+.probe-label {font-size:12px;font-weight:600;color:#cfdaea}
+.probe-label i {color:var(--ink);display:inline-block;min-width:20px;font:700 13px ui-monospace,monospace}
+.probe-state {justify-self:end}
+.probe[data-state="warning"] .probe-state {color:var(--warn)}
+.probe[data-state="critical"] .probe-state {color:var(--danger)}
+.probe strong {font:650 clamp(17px,2vw,24px)/1.1 ui-monospace,monospace;color:#f3f8ff;overflow-wrap:anywhere}
+.probe canvas {width:76px;height:24px;justify-self:end}
+.probe-scale,.probe-ends {grid-column:1/-1}
+.probe-scale {display:block;height:4px;margin:2px 4px 0;position:relative;border-radius:4px;background:linear-gradient(90deg,#24516b,var(--ink))}
+.probe-ph .probe-scale {background:linear-gradient(90deg,#d99b66,#53bca4 50%,#638cd5)}
+.probe-scale i {position:absolute;top:50%;height:8px;width:8px;border-radius:50%;background:white;box-shadow:0 0 0 2px #101d30;transform:translate(-50%,-50%);transition:left .22s}
+.probe-ends,.probe-detail {display:flex;justify-content:space-between;color:var(--text);gap:8px}
+.probe-ends {font:10px ui-monospace,monospace}
+.probe[data-state="idle"] .probe-scale {background:#2a3950}
+.probe-detail {padding:9px 12px;border-top:1px solid var(--line);font-size:11px}
+.probe-detail a,.reef-trends {color:var(--accent);font-weight:650;text-decoration:none}
+.reef-trends {justify-content:space-between;padding:10px 16px 13px;font-size:12px;border-top:1px solid var(--line)}
+.reef-dock {justify-self:center;flex-wrap:wrap;padding:8px 12px;font-size:12px}
+.reef-dock select,#reef-motion {background:var(--raised);border:1px solid var(--line);border-radius:7px;padding:7px 9px;color:var(--header-text);font:inherit;cursor:pointer}
+#reef-period {color:var(--text)}
+.reef[data-paused="true"] .probe-scale i {transition:none}
+@media(prefers-reduced-motion:reduce){.probe-scale i{transition:none}}
+.reef-equipment {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.reef-equipment a {min-width:0;display:grid;gap:6px;background:var(--card);color:#f0fffd;text-decoration:none;border:1px solid #31505b;border-radius:12px;padding:13px 18px}
+.reef-equipment a:hover,#reef-motion:hover,.reef-trends:hover {color:#a1f5e4;border-color:#8debd5}
+.reef-equipment span {color:#a2c1c8;font-size:12px}
+.reef-equipment strong {font-size:15px}
+.page-index .smart-alert-panel {margin-top:0;background:var(--card);color:var(--text);border-radius:16px;padding:18px}
+.reef-bubbles {inset:auto 12% 0 auto;width:24%;height:60%;overflow:hidden}
+.reef-bubbles i {position:absolute;bottom:-13px;width:8px;height:8px;border:1px solid #d3ffffb3;border-radius:50%;animation:reef-rise 9s linear infinite}
+.reef-bubbles i:nth-child(2) {left:17%;animation-delay:-4s}
+.reef-bubbles i:nth-child(3) {left:30%;animation-delay:-7s;width:5px;height:5px}
+.reef-bubbles i:nth-child(4) {left:49%;animation-delay:-2s}
+.reef-bubbles i:nth-child(5) {left:65%;animation-delay:-6s}
+.reef-bubbles i:nth-child(6) {left:79%;animation-delay:-3s;width:5px;height:5px}
+@keyframes reef-rise {0%{transform:translate(0,0);opacity:0}15%{opacity:.8}100%{transform:translate(18px,-260px);opacity:0}}
+.reef[data-paused="true"] i {animation-play-state:paused}
+@media(prefers-reduced-motion:reduce){.reef-shade{transition:none}.reef-bubbles i{animation:none}}
+@media(max-width:600px){.reef{min-height:480px;padding:16px;gap:12px}.reef-instruments{max-width:354px}.reef-dock{justify-self:start}.reef-equipment{grid-template-columns:1fr}.reef-equipment a{display:flex;align-items:center;justify-content:space-between}.reef-equipment strong{text-align:right}}
+
+#reef-ripple {background:transparent;color:#aff5e6;border:0;border-left:1px solid #547880;padding:5px 2px 5px 10px;font:inherit;cursor:pointer}
+#reef-ripple:disabled,#reef-motion:disabled {opacity:.65;cursor:default}
+.reef-ripple {position:absolute;pointer-events:none;z-index:-1;width:64px;height:26px;margin:-13px 0 0 -32px;border:2px solid #d9ffff;border-radius:50%;opacity:0}
+
+.reef-school {position:absolute;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+.swim-lane {position:absolute;top:var(--depth);width:100%;animation:reef-cross var(--lap) ease-in-out infinite;animation-delay:var(--start)}
+.swim-lane:nth-child(1) {--depth:34%;--lap:31s;--start:-11s;--size:clamp(45px,5vw,82px)}
+.swim-lane:nth-child(2) {--depth:53%;--lap:43s;--start:-24s;--size:clamp(62px,7vw,112px)}
+.swim-lane:nth-child(3) {--depth:18%;--lap:37s;--start:-7s;--size:clamp(44px,5.3vw,90px)}
+.swim-turn {width:var(--size);animation:reef-turn var(--lap) linear infinite;animation-delay:var(--start)}
+.swim-turn img {display:block;width:100%;height:auto;animation:reef-glide 4s ease-in-out infinite alternate}
+.swim-lane:nth-child(2) img {animation-delay:-2s}
+.swim-lane:nth-child(3) img {animation-delay:-1s}
+@keyframes reef-cross {0%,100%{transform:translateX(6%)}50%{transform:translateX(84%)}}
+@keyframes reef-turn {0%,48%,100%{transform:scaleX(1)}51%,96%{transform:scaleX(-1)}}
+@keyframes reef-glide {from{transform:translateY(-4px) rotate(-2deg)}to{transform:translateY(5px) rotate(2deg)}}
+.reef[data-light="night"] .reef-school {opacity:.53}
+.reef[data-light="dusk"] .reef-school {opacity:.8}
+.reef[data-paused="true"] :is(.swim-lane,.swim-turn,.swim-turn img) {animation-play-state:paused}
+@media (prefers-reduced-motion:reduce) {
+    .reef-school :is(.swim-lane,.swim-turn,.swim-turn img) {animation-play-state:paused}
+}
+@media (max-width:600px) {
+    .reef {grid-template-rows:auto minmax(132px,18vh) auto}
+    .reef-instruments {grid-area:1/1}
+    .reef-school {position:relative;inset:auto;grid-area:2/1}
+    .reef-dock {grid-area:3/1}
+    .swim-lane:nth-child(3) {--depth:1%}
+    @keyframes reef-cross-mobile {0%,100%{transform:translateX(0)}50%{transform:translateX(76%)}}
+    .swim-lane {animation-name:reef-cross-mobile}
+}
