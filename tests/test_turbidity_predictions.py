@@ -50,15 +50,15 @@ def test_default_adc_trend_reaches_web_and_desktop(clock):
     result = send(840)
     assert len(result) == 1
     alert = result[0]
-    assert alert['target_category'] == 'Cloudy'
-    assert alert['limit'] == 409
+    assert alert['target_label'] == alert['target_category'] == 'Slightly Cloudy'
+    assert alert['limit'] == 750
     assert alert['unit'] == ' ADC' and 'NTU' not in alert['message']
-    assert alert['trend'] == 'cloudier' and alert['eta_seconds'] > 0
+    assert alert['trend'] == 'falling' and alert['eta_seconds'] > 0
     assert config.sensor_history['turbidity'] == []
     assert len(config.sensor_history['turbidity_adc']) == 11
     assert forecasts(flask_app.test_client().get('/api/sensors').json['alerts'])
     assert forecasts(build_snapshot()[-1])
-    assert 'may become Cloudy' in alert['short_message']
+    assert 'may reach Slightly Cloudy' in alert['short_message']
 
 
 def test_cloudy_can_predict_very_cloudy(clock):
@@ -71,10 +71,9 @@ def test_cloudy_can_predict_very_cloudy(clock):
 
 @pytest.mark.parametrize('values', [
     [900] * 11,
-    list(range(800, 921, 12)),
     [900, 895, 902, 897, 904, 895, 900, 898, 905, 896, 900],
 ])
-def test_stable_improving_or_noisy_water_has_no_prediction(clock, values):
+def test_stable_or_noisy_water_has_no_prediction(clock, values):
     assert trend(clock, values) == []
 
 
@@ -134,3 +133,54 @@ def test_custom_history_duration_is_observed(clock, monkeypatch):
     monkeypatch.setattr(config, 'TREND_WINDOW_SECONDS', 60.0)
     assert trend(clock, range(950, 835, -6)) == []
     assert send(830)
+
+
+def set_ranges(rows):
+    calibration.set_active(True)
+    calibration.save({'ph': None, 'turbidity': rows})
+    calibration.set_active(False)
+
+
+@pytest.mark.parametrize('values,label,boundary,direction', [
+    (range(500, 601, 10), 'Crystal 2', 701, 'rising'),
+    (range(900, 799, -10), 'Clear sample', 700, 'falling'),
+    (range(790, 891, 10), 'Probe band 4', 951, 'rising'),
+    (range(400, 299, -10), 'Opaque', 200, 'falling'),
+])
+def test_forecasts_nearest_calibrated_label_in_both_directions(clock, values, label, boundary, direction):
+    set_ranges([
+        dict(min=0, max=200, label='Opaque', category='Very Cloudy'),
+        dict(min=201, max=700, label='Clear sample', category='Clear'),
+        dict(min=701, max=950, label='Crystal 2', category='Clear'),
+        dict(min=951, max=1023, label='Probe band 4', category='Slightly Cloudy'),
+    ])
+    result = trend(clock, values)
+    assert len(result) == 1
+    alert = result[0]
+    assert (alert['target_label'], alert['limit'], alert['trend']) == (label, boundary, direction)
+    assert label in alert['short_message']
+    assert alert['eta_seconds'] == pytest.approx((boundary - values[-1]) / alert['trend_rate_per_second'])
+    assert forecasts(flask_app.test_client().get('/api/sensors').json['alerts'])[0]['target_label'] == label
+    assert forecasts(build_snapshot()[-1])[0]['target_label'] == label
+
+
+def test_reversal_replaces_old_forecast_and_reached_label_is_retired(clock):
+    result = trend(clock, range(800, 901, 10))
+    assert result[0]['target_label'] == 'Very Clear'
+    result = trend(clock, range(900, 789, -10))
+    assert len(result) == 1 and result[0]['target_label'] == 'Slightly Cloudy'
+    result = send(750)
+    assert all(item['target_label'] != 'Slightly Cloudy' for item in result)
+
+
+def test_one_range_has_no_transition_to_predict(clock):
+    set_ranges([dict(min=0, max=1023, label='My whole range', category='Clear')])
+    assert trend(clock, range(500, 601, 10)) == []
+
+
+def test_ntu_calibration_forecasts_recovery_using_raw_adc(clock):
+    from test_ntu_calibration import install
+    install()
+    result = trend(clock, range(520, 621, 10))
+    assert (result[0]['target_label'], result[0]['limit']) == ('Clear custom', 701)
+    assert result[0]['unit'] == ' ADC'

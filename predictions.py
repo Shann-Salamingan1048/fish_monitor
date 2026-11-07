@@ -280,7 +280,8 @@ def _direction_consistency(samples, direction, tolerance):
     return good / total if total else 0.0
 
 
-def _prediction(history, key, name, unit, safe, critical, danger, trend):
+def _fit_trend(history, key):
+    """Fit a sufficiently consistent trend to the recent observation window."""
     now = time.time()
 
     trend_window = max(
@@ -318,8 +319,8 @@ def _prediction(history, key, name, unit, safe, critical, danger, trend):
 
     slope, _, r_squared = regression
 
-    direction = 1 if trend == "rising" else -1
-    directional_slope = slope * direction
+    direction = 1 if slope > 0 else -1
+    directional_slope = abs(slope)
 
     minimum_slope = config.MIN_RISE_PER_SECOND.get(key, 0.0)
 
@@ -345,6 +346,19 @@ def _prediction(history, key, name, unit, safe, critical, danger, trend):
     current = statistics.median(
         [value for _, value in smoothed[-3:]]
     )
+
+    return slope, r_squared, consistency, current, span
+
+
+def _prediction(history, key, name, unit, safe, critical, danger, trend):
+    fit = _fit_trend(history, key)
+    if fit is None:
+        return None
+    slope, r_squared, consistency, current, span = fit
+    direction = 1 if trend == "rising" else -1
+    directional_slope = slope * direction
+    if directional_slope <= 0:
+        return None
 
     if trend == "rising":
         if current >= critical:
@@ -408,24 +422,20 @@ def _prediction(history, key, name, unit, safe, critical, danger, trend):
 
 
 def _turbidity_prediction(snapshot, history):
-    """Forecast the next worsening clarity category using the Mega's ADC ranges."""
+    """Forecast the first ADC count in the next calibrated range along the fitted slope."""
     adc = snapshot.get('turbidity_adc')
     samples = history.get('turbidity_adc', [])
-    now = time.time()
-    gap_limit = config.HISTORY_SAMPLE_INTERVAL + config.QUALITY_MAX_PACKET_GAP_SECONDS
-    recent = [sample for sample in samples if now - sample[0] <= config.TREND_WINDOW_SECONDS + 5]
-    if adc is not None:
-        with config.prediction_lock:
+    max_age = config.HISTORY_SAMPLE_INTERVAL + config.QUALITY_MAX_PACKET_GAP_SECONDS
+    # Recompute the ADC forecast from this snapshot. A previous target must
+    # disappear when reached, when the trend reverses, or when readings stop.
+    with config.prediction_lock:
+        config.active_prediction_alerts.pop('turbidity:adc', None)
+        if adc is not None:
             config.active_prediction_alerts.pop('turbidity:rising', None)
-    ready = (isinstance(adc, (int, float)) and not isinstance(adc, bool)
-             and math.isfinite(adc) and 0 <= adc <= 1023 and len(recent) >= 6
-             and recent[-1][0] - recent[0][0] >= config.TREND_WINDOW_SECONDS
-             and now - recent[-1][0] <= gap_limit)
-    if not ready:
-        with config.prediction_lock:
-            config.active_prediction_alerts.pop('turbidity:cloudier', None)
+
+    if adc is None:
         # Preserve support for older firmware reporting actual numeric NTU.
-        if adc is None and get_prediction_numeric('turbidity', snapshot.get('turbidity')) is not None:
+        if get_prediction_numeric('turbidity', snapshot.get('turbidity')) is not None:
             alert = _prediction(history, 'turbidity', 'Turbidity', ' NTU',
                                config.TURBIDITY_LIMIT_NTU, config.TURBIDITY_CRITICAL_NTU,
                                'become too cloudy', 'rising')
@@ -436,35 +446,33 @@ def _turbidity_prediction(snapshot, history):
             return alert
         return None
 
-    ranges = calibration.effective_adc_ranges()
-    current = next(row for row in ranges if row['min'] <= adc <= row['max'])
-    current_rank = calibration.CATEGORIES.index(current['category'])
-    with config.prediction_lock:
-        cached = config.active_prediction_alerts.get('turbidity:cloudier')
-        if cached and current_rank <= calibration.CATEGORIES.index(cached['alert']['target_category']):
-            config.active_prediction_alerts.pop('turbidity:cloudier', None)
-
-    # Custom ADC ranges may place worsening water on either side of the reading.
-    worse = [row for row in ranges if row['category'] in ('Cloudy', 'Very Cloudy')
-             and calibration.CATEGORIES.index(row['category']) < current_rank]
-    for trend, edge in (('falling', 'max'), ('rising', 'min')):
-        if trend == 'falling':
-            ahead = [row for row in worse if row[edge] < adc]
-        else:
-            ahead = [row for row in worse if row[edge] > adc]
-        if not ahead:
-            continue
-        target = min(ahead, key=lambda row: abs(row[edge] - adc))
-        alert = _prediction(history, 'turbidity_adc', 'Turbidity', ' ADC',
-                            target[edge], target[edge], 'become ' + target['category'], trend)
-        if alert is not None:
-            alert.update(trend='cloudier', title='Water becoming cloudier',
-                         target_category=target['category'], source='turbidity_adc')
-            alert['message'] = alert['short_message'] = (
-                f"Water may become {target['label']} in about {format_duration(alert['eta_seconds'])} "
-                'if this trend continues.')
-            return alert
-    return None
+    if (not isinstance(adc, (int, float)) or isinstance(adc, bool)
+            or not 0 <= adc <= 1023 or not samples or time.time() - samples[-1][0] > max_age):
+        return None
+    fit = _fit_trend(history, 'turbidity_adc')
+    if fit is None:
+        return None
+    slope, r_squared, consistency, _, _ = fit
+    ranges = calibration.effective_adc_ranges()  # Sorted by increasing ADC.
+    index = next(i for i, row in enumerate(ranges) if row['min'] <= adc <= row['max'])
+    target_index = index + (1 if slope > 0 else -1)
+    if not 0 <= target_index < len(ranges):
+        return None
+    target = ranges[target_index]
+    boundary = target['min'] if slope > 0 else target['max']
+    eta = (boundary - adc) / slope
+    if not 0 < eta <= 30 * 60:
+        return None
+    message = f"Water clarity may reach {target['label']} in about {format_duration(eta)} if this trend continues."
+    return {
+        'sensor': 'Turbidity', 'type': 'prediction', 'severity': 'prediction',
+        'source': 'turbidity_adc', 'trend': 'rising' if slope > 0 else 'falling',
+        'title': 'Water clarity forecast', 'message': message, 'short_message': message,
+        'target_label': target['label'], 'target_category': target['category'],
+        'value': adc, 'unit': ' ADC', 'limit': boundary, 'eta_seconds': eta,
+        'trend_rate_per_second': slope, 'confidence': r_squared,
+        'direction_consistency': consistency,
+    }
 
 
 def _add_limit(
@@ -516,7 +524,7 @@ def _active_predictions(candidates):
             key = (
                 alert["sensor"].lower().replace(" ", "_")
                 + ":"
-                + alert["trend"]
+                + ("adc" if alert.get("source") == "turbidity_adc" else alert["trend"])
             )
 
             stored = alert.copy()

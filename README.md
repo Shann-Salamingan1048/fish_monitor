@@ -41,7 +41,7 @@ Create weekly or everyday drain/refill schedules in Web → Water Changes → Wa
 
 ## Turbidity predictions
 
-The Pi uses recent raw ADC readings and the saved clarity ranges to forecast Cloudy or Very Cloudy. These predictions appear in desktop and web notifications after the configured Prediction history interval and sufficient consistent readings. Calibration, disabled sensors, missing readings and reconnects reset this observation period. ADC forecasts also follow ranges configured with NTU reference calibration.
+The Pi uses recent raw ADC readings to estimate when the trend may enter the next calibrated range. Both rising and falling ADC can produce a forecast. Notifications use the destination range’s exact display label, including when adjacent ranges share a category. These predictions appear in desktop and web notifications after the configured Prediction history interval and sufficient consistent readings. Calibration, disabled sensors, missing readings and reconnects reset this observation period. ADC forecasts also follow ranges configured with NTU reference calibration.
 
 ## Aquarium overview
 
