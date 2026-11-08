@@ -154,7 +154,7 @@ def test_admin_routes_and_csrf():
 def test_gui_save_calls_shared_schedule_service():
     from water_schedule_gui import WaterScheduleWindow
     var=lambda value:SimpleNamespace(get=lambda:value)
-    panel=SimpleNamespace(day=var(config.FEEDING_DAY_NAMES[7]),at=var('09:10'),drain=var('20'),refill=var('60'),editing=None,
+    panel=SimpleNamespace(day=var(config.FEEDING_DAY_NAMES[7]),hour=var('09'),minute=var('10'),drain=var('20'),refill=var('60'),editing=None,
                           run=lambda callback,*args:callback())
     WaterScheduleWindow.save(panel)
     assert ws.schedules()[0]['time']=='09:10'

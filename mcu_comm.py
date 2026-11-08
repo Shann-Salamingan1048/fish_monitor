@@ -10,6 +10,7 @@ Handles:
 - MegaOutput identification/status
 """
 
+import math
 import serial
 import time
 import threading
@@ -185,6 +186,23 @@ class MCUCommunicator:
     # ------------------------------------------------------------------
     # MegaInput sensor packet
     # ------------------------------------------------------------------
+
+    def simulate_readings(self, stop_event):
+        """Send example Mega packets through the regular desktop and web data path."""
+        started = time.monotonic()
+        while not stop_event.is_set():
+            phase = (time.monotonic() - started) / 10
+            temp = 27 + 0.7 * math.sin(phase)
+            ph = 7.2 + 0.12 * math.sin(phase / 2)
+            adc = round(850 + 120 * math.sin(phase))
+            clarity = next(row['label'] for row in calibration.DEFAULT_RANGES
+                           if row['min'] <= adc <= row['max'])
+            revision = sensor_control.get_status()['revision']
+            self._parse_sensor_message(
+                f'MegaInput,Temp:{temp:.1f},pH:{ph:.2f},pHADC:{round(885 - (ph - 7.2) * 50)},'
+                f'Turbidity:{clarity},TurbidityADC:{adc},FloatLow:1,FloatNormal:1,FloatUpper:0,'
+                f'SENSORCFG:{revision}')
+            stop_event.wait(1)
 
     def _parse_sensor_message(self, line):
         # Serialize packet decisions and operator overrides: a concurrent old

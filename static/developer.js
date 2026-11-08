@@ -94,11 +94,22 @@
         $('live-ph-adc').textContent = live.phADC ?? '—';
         liveADC = live.turbidityADC ?? null;
         $('live-turbidity-adc').textContent = liveADC ?? '—';
-        $('live-turbidity-ntu').textContent = live.turbidityNTU === null || live.turbidityNTU === undefined
-            ? ({not_calibrated: 'Not calibrated', out_of_range: 'Outside reference range'}[live.turbidityNTUState] || '—')
-            : `${live.turbidityNTU.toFixed(2)} NTU`;
-        $('adc-note').textContent = !live.fresh ? 'Waiting for sensor readings.' :
-            'Live readings';
+        let value = '—', note = 'Waiting for a fresh turbidity ADC reading.';
+        if (live.turbidityNTU != null) {
+            value = `${live.turbidityNTU.toFixed(2)} NTU`;
+            note = 'Interpolated from your saved NTU references.';
+        } else if (live.illustrativeNTU != null) {
+            value = `${live.illustrativeNTU.toFixed(2)} NTU (illustrative)`;
+            note = `Assumed linear scale: (1023 − ${liveADC}) × 1000 / 1023. Add known-NTU references for a sensor-specific reading.`;
+            if (live.turbidityNTUState === 'out_of_range') {
+                const points = state.profile.turbidityPoints;
+                const clearer = liveADC > points[0].adc;
+                const edge = clearer ? points[0] : points[points.length - 1];
+                note = `Outside reference range (nearest: ADC ${edge.adc}, ${edge.ntu} NTU). ${note}`;
+            }
+        }
+        $('live-turbidity-ntu').textContent = value;
+        $('adc-note').textContent = note;
         if (fill) {
             $('ph-custom').checked = Boolean(state.profile.ph);
             $('ph-points').value = String(state.profile.ph?.points ?? 2);
@@ -127,6 +138,7 @@
                 $('calibration-start').disabled = $('calibration-finish').disabled = true;
                 liveADC = null;
                 $('live-ph-adc').textContent = $('live-turbidity-adc').textContent = $('live-turbidity-ntu').textContent = '—';
+                $('adc-note').textContent = 'Waiting for a fresh turbidity ADC reading.';
                 message(error.message, true);
             }
         }
@@ -144,7 +156,7 @@
     $('calibration-start').addEventListener('click', () => mutate('POST', {active: true}, 'Calibration started. Wait for stable ADC readings.'));
     $('calibration-finish').addEventListener('click', () => {
         if (!window.confirm('Have you saved your changes and returned both probes to the aquarium?')) return;
-        mutate('POST', {active: false}, 'Calibration finished. pH correction will wait for the settling period.');
+        mutate('POST', {active: false}, 'Calibration finished. Monitoring resumed.');
     });
     $('ph-points').addEventListener('change', showPH);
     $('ph-pair').addEventListener('change', showPH);

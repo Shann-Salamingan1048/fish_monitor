@@ -1,5 +1,6 @@
 """Run the monitor once: desktop + web, or --headless for web only."""
 import argparse
+from pathlib import Path
 import threading
 import signal
 import webbrowser
@@ -9,6 +10,9 @@ import subprocess
 import config
 # Comment this line to hide Developer option and block its routes; restart main.py.
 config.DEVELOPER_OPTIONS = True
+
+# Laptop preview: uncomment the next line, save, and restart. Comment it for the Pi.
+#config.SIMULATE_SENSORS = True
 import calibration
 import fan_control
 import feeding_control
@@ -52,6 +56,8 @@ def main():
     parser.add_argument('--headless', action='store_true', help='Run without a desktop display')
     parser.add_argument('--open-browser', action='store_true', help='Open the local dashboard')
     args = parser.parse_args()
+    if config.SIMULATE_SENSORS:
+        config.DB_FILE = str(Path(__file__).with_name('fish_tank_preview.db'))
     config.init_database()
     config.load_persisted_settings()
     fan_control.initialize()
@@ -63,6 +69,8 @@ def main():
     # Binding before hardware startup also prevents two copies from using the Mega.
     server = make_server(config.WEB_HOST, config.WEB_PORT, flask_app, threaded=True)
     root = None
+    workers = []
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     communicator = get_communicator()
     try:
         if not args.headless:
@@ -71,13 +79,17 @@ def main():
             root = tk.Tk()
             app = FocusedMonitorApp(root)
             communicator.app_callback = app.update_labels
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        threading.Thread(target=camera_watchdog, daemon=True).start()
-        communicator.start_reading(config.MEGA_PORT)
-        worker = threading.Thread(target=feeding_schedule_worker, args=(stop_event,), daemon=True)
-        worker.start()
-        water_worker = threading.Thread(target=water_schedule.worker, args=(stop_event,), daemon=True)
-        water_worker.start()
+        server_thread.start()
+        if config.SIMULATE_SENSORS:
+            print('Laptop preview: simulated sensor readings.')
+            workers.append(threading.Thread(target=communicator.simulate_readings, args=(stop_event,), daemon=True))
+        else:
+            threading.Thread(target=camera_watchdog, daemon=True).start()
+            communicator.start_reading(config.MEGA_PORT)
+            for target in (feeding_schedule_worker, water_schedule.worker):
+                workers.append(threading.Thread(target=target, args=(stop_event,), daemon=True))
+        for worker in workers:
+            worker.start()
         url = f'http://localhost:{config.WEB_PORT}'
         print(f'Dashboard: {url} (bind address: {config.WEB_HOST})')
         for phone_url in local_network_urls():
@@ -100,10 +112,9 @@ def main():
         # Close the write gate before scheduler joins or sensor callbacks.
         config.begin_shutdown()
         # Wait for the scheduler to leave its command path before shutdown stops.
-        if 'worker' in locals():
-            worker.join(timeout=3)
-        if 'water_worker' in locals():
-            water_worker.join(timeout=3)
+        for worker in workers:
+            if worker.is_alive():
+                worker.join(timeout=3)
         try:
             feeding_control.stop_feeder()
         except ValueError:
@@ -114,7 +125,7 @@ def main():
         with config.camera_lock:
             stop_camera_if_needed()
         # shutdown() requires a running serve_forever thread.
-        if 'worker' in locals():
+        if server_thread.is_alive():
             server.shutdown()
         server.server_close()
         if root is not None:

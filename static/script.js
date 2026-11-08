@@ -616,14 +616,6 @@ function renderWaterControl(status) {
     if (!status.manualOverride && status.levelCorrection === "overflow") text += " • Overflow: drain only until Normal";
     else if (!status.manualOverride && status.levelCorrection === "low") text += " • Low water: refill only until Normal";
 
-    const recovery = document.getElementById('sensor-recovery-status');
-    const settling = status.phSettling;
-    const recoveryText = status.calibrationActive
-        ? ''
-        : settling?.active ? (settling.waitingForNormal
-            ? 'pH settling · Waiting for normal water level.'
-            : `pH settling · ${settling.remainingSeconds} s remaining.`) : '';
-    if (recovery) { recovery.textContent = recoveryText; recovery.hidden = !recoveryText; }
     const pending = status.pendingQuality || [];
     const pendingText = pending.length ? 'Checking ' + pending.map(item =>
         (item.sensor === 'ph' ? 'pH' : 'water clarity') + ' (' + item.seconds + ' / ' + status.confirmationSeconds + ' s)').join(', ') : '';
@@ -883,11 +875,13 @@ function makeChart(canvasId, label, dataArray) {
         }
         const ctx = canvas.getContext('2d'); ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         ctx.clearRect(0, 0, width, height);
+        const style = getComputedStyle(canvas);
+        const labelColor = style.getPropertyValue('--text');
         const clarity = canvasId === 'turbidityChart';
         const categories = canvasId === 'floatChart' ? ['Very low','Low','Normal','Overflow'] : clarity ? clarityLevels : null;
         const displayData = canvasId === 'tempChart' ? dataArray.map(v => v === null ? null : temperatureToDisplay(v)) : dataArray;
         const valid = displayData.filter(v => v !== null && Number.isFinite(v));
-        ctx.font = '12px Arial'; ctx.textAlign = 'left'; ctx.fillStyle = '#bbcbdf';
+        ctx.font = '12px Arial'; ctx.textAlign = 'left'; ctx.fillStyle = labelColor;
         if (canvasId === 'tempChart') ctx.fillText('Temperature (°' + temperatureUnit + ')', 55, 12);
         if (clarity) {
             const latest = displayData[displayData.length - 1];
@@ -908,12 +902,13 @@ function makeChart(canvasId, label, dataArray) {
             if (clarity && categories) {
                 const band = (bottom - top) / Math.max(ticks, 1);
                 const bandTop = Math.max(top, y(value) - band / 2);
-                ctx.fillStyle = ['#103237','#13382f','#332f20','#3c2b20','#3b202e'][Math.round(i * 4 / Math.max(ticks, 1))];
+                const bands = ['--raised', '--good-soft', '--warn-soft', '--prediction-soft', '--danger-soft'];
+                ctx.fillStyle = style.getPropertyValue(bands[Math.round(i * 4 / Math.max(ticks, 1))]);
                 ctx.fillRect(left, bandTop, right - left, Math.min(bottom, y(value) + band / 2) - bandTop);
             }
-            ctx.strokeStyle = '#314153'; ctx.beginPath(); ctx.moveTo(left, y(value)); ctx.lineTo(right, y(value)); ctx.stroke();
+            ctx.strokeStyle = style.getPropertyValue('--line'); ctx.beginPath(); ctx.moveTo(left, y(value)); ctx.lineTo(right, y(value)); ctx.stroke();
             if (i === ticks || i % Math.max(1, Math.ceil(ticks / 8)) === 0) {
-                ctx.fillStyle = '#bbcbdf';
+                ctx.fillStyle = labelColor;
                 ctx.fillText(categories ? categories[i] : value.toFixed(1), 3, y(value) + 4, left - 9);
             }
         }
@@ -926,7 +921,7 @@ function makeChart(canvasId, label, dataArray) {
             previous = v;
         }); ctx.stroke();
         displayData.forEach((v, i) => { if (v !== null && Number.isFinite(v)) {ctx.fillStyle = colors[canvasId]; ctx.beginPath(); ctx.arc(x(i),y(v),2,0,Math.PI*2);ctx.fill();} });
-        ctx.fillStyle = '#bbcbdf';
+        ctx.fillStyle = labelColor;
         ctx.fillText(labels[0] || '', left, 229);
         ctx.textAlign = 'right'; ctx.fillText(labels[labels.length-1] || '', right, 229);
         if (!clarity) canvas.setAttribute('aria-label', label + (canvasId === 'tempChart' ? ' °' + temperatureUnit : '') + ', latest reading: ' + valid[valid.length-1]);
@@ -1246,6 +1241,14 @@ async function updateDashboard() {
 
 document.addEventListener("DOMContentLoaded", () => {
     injectRolePanel();
+    const themeSelect = document.getElementById('display-theme');
+    if (themeSelect) {
+        themeSelect.value = document.documentElement.dataset.theme || 'dark';
+        themeSelect.addEventListener('change', () => {
+            document.documentElement.dataset.theme = themeSelect.value;
+            try { localStorage.setItem('aquapi.theme', themeSelect.value); } catch (_) {}
+        });
+    }
     setupTemperatureSelector();
     injectSensorControls();
     injectStatusLegend();

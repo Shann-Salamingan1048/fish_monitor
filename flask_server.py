@@ -1,7 +1,6 @@
 # flask_server.py
 import threading
 import time
-import cv2
 import uuid
 import sqlite3
 from urllib.parse import urlsplit
@@ -11,15 +10,14 @@ import admin_sessions
 import admin_credentials
 import calibration
 
-# Try to import picamera2, but handle it gracefully if not available
-try:
-    from picamera2 import Picamera2
-
-    PICAMERA_AVAILABLE = True
-except ImportError:
-    PICAMERA_AVAILABLE = False
-    Picamera2 = None
-    print("Warning: picamera2 module not found. Camera streaming will be disabled.")
+Picamera2 = None
+if not config.SIMULATE_SENSORS:
+    try:
+        import cv2
+        from picamera2 import Picamera2
+    except ImportError:
+        print("Camera libraries unavailable. Camera streaming is disabled.")
+PICAMERA_AVAILABLE = Picamera2 is not None
 
 from config import (
     APP_SECRET_KEY, ADMIN_PIN,

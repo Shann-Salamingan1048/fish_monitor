@@ -67,6 +67,13 @@ const tick=()=>new Promise(r=>setTimeout(r,30));
   if(name==='settings'){
    assert.equal(d.getElementById('maxAdminSessions').value,'2');d.getElementById('maxAdminSessions').value='3';
    assert(d.querySelector('.display-settings #temperature-unit'));
+   const theme = d.getElementById('display-theme');
+   for (const choice of ['light','dark']) {
+    theme.value = choice;
+    theme.dispatchEvent(new w.Event('change'));
+    assert.equal(d.documentElement.dataset.theme, choice);
+    assert.equal(w.localStorage.getItem('aquapi.theme'), choice);
+   }
    assert(!d.querySelector('header #temperature-unit'));
    assert(!d.getElementById('prediction-watch-help'));
    assert.equal(d.getElementById('tempLimit').value,'86');d.getElementById('tempLimit').value='89.6';await w.loadAuthStatus(false);assert.equal(d.getElementById('tempLimit').value,'89.6');

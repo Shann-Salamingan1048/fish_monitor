@@ -195,6 +195,9 @@ def apply(changes):
             conn.execute('INSERT INTO app_state (key,value,updated_at) VALUES (?,?,?) '
                          'ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at',
                          ('sensor_enabled', json.dumps(proposed), time.time()))
+        if changed & {'ph', 'turbidity'}:
+            import calibration
+            calibration.reset_readings()
         _enabled.update(proposed)
         _revision += 1
         _input_revision = None

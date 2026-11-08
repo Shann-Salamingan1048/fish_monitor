@@ -156,3 +156,18 @@ body[data-page="index"] .app-header {height:var(--reef-header);margin:0;padding-
 [data-species="glo-tetra-red"] img {filter:hue-rotate(30deg) saturate(1.35)}
 [data-species="glo-tetra-green"] img {filter:hue-rotate(135deg) brightness(1.3)}
 [data-species="glo-tetra-blue"] img {filter:hue-rotate(250deg) brightness(1.1)}
+
+[data-theme="light"] :is(.reef-instruments,.reef-dock,.probe) {
+    background:var(--card); color:var(--header-text); border-color:var(--line);
+}
+[data-theme="light"] .probe {--ink:#126b96;background:var(--raised)}
+[data-theme="light"] .probe-ph {--ink:#187856}
+[data-theme="light"] .probe-water {--ink:#365da3}
+[data-theme="light"] .probe-clarity {--ink:#745297}
+[data-theme="light"] :is(.probe-label,.probe strong,.reef-equipment a,.reef-equipment span) {color:var(--header-text)}
+[data-theme="light"] .reef-dock #fish-add {color:white}
+[data-theme="light"] .reef-trends:hover {color:var(--accent)}
+
+@media (max-width:700px) {
+    .fish-controls {grid-column:1 / -1; flex-wrap:wrap}
+}

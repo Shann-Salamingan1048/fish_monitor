@@ -2,7 +2,7 @@
 
 ## Developer option
 
-The web Developer option shows **Turbidity ADC** and **Turbidity NTU** together. ADC is the integer average reported by the Mega after each 100-sample batch. NTU is a piecewise linear estimate calculated on the Pi from your reference points. It displays **Not calibrated** until references are saved, and **Outside reference range** when ADC is outside those references. Stale, disabled or paused data is not displayed as a fresh measurement.
+The web Developer option shows **Turbidity ADC** and **Turbidity NTU** together. ADC is the integer average reported by the Mega after each 100-sample batch. With a fresh ADC and no saved NTU references, Developer option shows a live **illustrative** value using an assumed linear scale from ADC 1023 to 0 across 0 to 1000 NTU. At ADC 900, for example, `(1023 − 900) × 1000 / 1023 = 120.23`. This display-only assumption has no sensor-specific accuracy and never drives alarms or pump decisions. With known-NTU references, Developer option interpolates between the nearest two saved points. Outside their span, the page identifies the nearest reference and shows the illustrative scale separately. Old, disabled or paused ADC readings are withheld. After Finish calibration, the display updates automatically on the next fresh sample.
 
 Update the Python application and web assets, then restart `main.py`. **No new Mega upload is needed if the previous combined Mega firmware is already installed.** The single `.ino`, pin assignments, sampling schedule and EEPROM behavior are unchanged. Keep your existing database when updating; it contains your settings, schedules and calibration.
 
@@ -22,7 +22,7 @@ Quantitative NTU needs known-NTU reference solutions or samples measured with a 
 
 Calibration is stored in the Pi database. Saving or loading NTU ranges converts them once into integer ADC ranges. The same converted boundaries determine web labels and the Mega's local clarity categories. The existing `MegaConfig` protocol sends these ranges to Mega RAM. Automatic decisions do not wait for Python to calculate an NTU value every sample.
 
-Outside the reference ADC span, numeric NTU is withheld. In NTU mode, ADC below the cloudiest reference uses the highest-NTU range's category; ADC above the clearest reference uses the lowest-NTU range's category. Set those extreme categories appropriately for your tested setup. ADC mode always uses its configured ADC ranges.
+Outside the reference ADC span, reference-based NTU is withheld. In NTU mode, ADC below the cloudiest reference uses the highest-NTU range's category; ADC above the clearest reference uses the lowest-NTU range's category. Set those extreme categories appropriately for your tested setup. ADC mode always uses its configured ADC ranges.
 
 Cloudy and Very Cloudy can start correction after the configured confirmation period. Slightly Cloudy can continue an existing correction; Clear and Very Clear end it. Calibration mode, sensor disabling, float priority, pH settling and System Off retain their existing behavior. Configuration is resent after reconnection; the Mega retains its existing heartbeat-stop behavior on communication loss.
 
@@ -38,4 +38,4 @@ MegaInputStatus,TURBIDITY:LIVE,rawAdc:900.00,NTU:UNCALIBRATED,SAMPLES:100,NTU_ME
 
 **Serial diagnostic NTU is separate from web NTU calibration.** It uses `TURBIDITY_NTU_POINTS` constants in the sketch and can still say `UNCALIBRATED` after web calibration. Web calibration does not change those constants or write EEPROM. The normal telemetry's integer `TurbidityADC` is used for web NTU and local rule mapping; the diagnostic prints the fractional mean. Use Developer option for the web-calibrated NTU value.
 
-For standalone serial NTU, enter measured `{ADC, NTU}` reference pairs in the sketch constants and upload. Those constants do not change the web profile. Neither path assumes that ADC 0 equals 1000 NTU.
+For standalone serial NTU, enter measured `{ADC, NTU}` reference pairs in the sketch constants and upload. Those constants do not change the web profile. Only the illustrative web scale assigns 1000 to ADC 0.

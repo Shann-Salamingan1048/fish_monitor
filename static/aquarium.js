@@ -24,6 +24,7 @@
         [choice.dataset.species, choice.querySelector('img').src]));
     const addFish = document.getElementById('fish-add');
     const removeFish = document.getElementById('fish-remove');
+    const clearFish = document.getElementById('fish-clear');
     const fishCount = document.getElementById('fish-count');
     const quantity = document.getElementById('fish-quantity');
     const space = document.getElementById('fish-space');
@@ -51,7 +52,7 @@
         const count = school.childElementCount;
         fishCount.textContent = String(count);
         addFish.disabled = count >= maximumFish;
-        removeFish.disabled = count === 0;
+        removeFish.disabled = clearFish.disabled = count === 0;
     }
     function restoreSchool() {
         let roster;
@@ -98,6 +99,11 @@
     removeFish.addEventListener('click', () => {
         if (school.lastElementChild) school.lastElementChild.remove();
         saveSchool();
+    });
+    clearFish.addEventListener('click', () => {
+        school.replaceChildren();
+        saveSchool();
+        addFish.focus();
     });
     let inView = true;
     if ('IntersectionObserver' in window) {

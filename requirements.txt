@@ -12,8 +12,8 @@
 #   sudo apt install python3 python3-venv python3-pip python3-tk python3-opencv tzdata curl ca-certificates
 # Picamera2/libcamera require Raspberry Pi OS camera support. The laptop webcam
 # is not supported by this project's current camera implementation.
-# cv2 comes from python3-opencv, including its NumPy dependencies. Install it
-# even for dashboard-only use because flask_server.py imports cv2 at startup.
+# The Pi camera uses cv2 from python3-opencv, including its NumPy dependencies.
+# The laptop sample preview only needs the Python packages below and Tk for the GUI.
 # Do not mix pip OpenCV/NumPy wheels into the Pi OS camera environment.
 #
 # 2. PYTHON ENVIRONMENT - both hosts:

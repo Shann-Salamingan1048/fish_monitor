@@ -1646,7 +1646,7 @@ body {background:var(--bg);color:var(--text);padding:clamp(10px,1.6vw,24px)}
 .access-link {background:var(--card);color:var(--accent);border-color:var(--line)}
 a {color:var(--accent)}
 :focus-visible {outline:2px solid var(--accent);outline-offset:3px}
-input,select,textarea {color-scheme:dark;accent-color:var(--accent)}
+input,select,textarea {color-scheme:inherit;accent-color:var(--accent)}
 .mode-btn:not(.muted):not(.danger), .schedule-form button[type=submit] {background:var(--accent-button);color:var(--header-text)}
 .graph-card canvas {scroll-margin-top:2rem}
 @media(min-width:1200px) {
@@ -1671,3 +1671,18 @@ input,select,textarea {color-scheme:dark;accent-color:var(--accent)}
     .nav-ready .app-nav.menu-open {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));position:absolute;left:8px;right:8px;top:64px;z-index:20;box-shadow:0 12px 26px #02071099}
     .nav-ready .app-nav a {text-align:left}
 }
+
+:root[data-theme="light"] {
+    color-scheme: light;
+    --bg:#f2f6fa; --card:#fff; --raised:#e9f1f7; --line:#b8cad6;
+    --header-text:#122e40; --text:#354f60;
+    --accent:#075c79; --accent-button:#c4e9f5;
+    --good:#12634a; --good-soft:#e2f4eb; --good-button:#bde5d3;
+    --warn:#814b12; --warn-soft:#fff2d9; --warn-button:#f4d5a6;
+    --danger:#a12b43; --danger-soft:#fde8ec; --danger-button:#f6c5cf;
+    --prediction:#67409c; --prediction-soft:#f2eafa; --prediction-button:#dfd0f2;
+    --shadow:0 8px 26px #37586d18;
+}
+[data-theme="light"] .app-nav {background:var(--card)}
+[data-theme="light"] .brand-mark, [data-theme="light"] .app-nav a[aria-current="page"] {background:var(--accent-button)}
+[data-theme="light"] :is(.app-nav a,.access-link):hover {color:var(--header-text)}

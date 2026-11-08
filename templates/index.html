@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% set page = "index" %}
 {% set title = "Real-Time Readout" %}
-{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='aquarium.css') }}?v=7">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='aquarium.css') }}?v=9">{% endblock %}
 {% block content %}
 <section class="reef" data-light="day" data-zone="{{ tank_timezone }}" aria-labelledby="reef-title">
   <div class="reef-shade" aria-hidden="true"></div>
@@ -40,6 +40,7 @@
     <div class="fish-controls" role="group" aria-label="Animated fish">
       <button type="button" id="fish-remove" aria-label="Remove the last fish" title="Remove the last fish"><i class="ico ico-minus" aria-hidden="true"></i></button>
       <button type="button" id="fish-add" aria-haspopup="dialog" aria-controls="fish-picker"><i class="ico ico-plus" aria-hidden="true"></i> Add fish</button>
+      <button type="button" id="fish-clear">Clear all fish</button>
       <output id="fish-count" aria-label="Animated fish count">10</output>
     </div>
     <div class="light-control"><label for="reef-light"><i class="ico ico-light" aria-hidden="true"></i> Lighting</label>
@@ -102,4 +103,4 @@
                     </div>
                 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='aquarium.js') }}?v=7"></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='aquarium.js') }}?v=8"></script>{% endblock %}

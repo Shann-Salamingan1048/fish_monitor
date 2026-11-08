@@ -9,7 +9,7 @@ const tick=()=>new Promise(r=>setTimeout(r,20));
  let poll; w.setTimeout=fn=>{poll=fn;return 1}; w.clearTimeout=()=>{};
  let state={active:false,categories:['Very Cloudy','Cloudy','Slightly Cloudy','Clear','Very Clear'],
    profile:{ph:null,turbidity:null},defaults:[{min:0,max:1023,label:'Clear',category:'Clear'}],
-   live:{fresh:true,phADC:850,turbidityADC:700,turbidityNTU:null,turbidityNTUState:'not_calibrated'}};
+   live:{fresh:true,phADC:850,turbidityADC:700,turbidityNTU:null,turbidityNTUState:'illustrative',illustrativeNTU:315.74}};
  w.fetch=async(url,options={})=>{
   if(options.body){const data=JSON.parse(options.body);mutations.push(data);
    if(options.method==='POST')state.active=data.active;
@@ -19,7 +19,7 @@ const tick=()=>new Promise(r=>setTimeout(r,20));
  };
  w.eval(fs.readFileSync(path.join(__dirname,'../static/developer.js'),'utf8'));await tick();
  assert.equal($('live-turbidity-adc').textContent,'700');
- assert.equal($('live-turbidity-ntu').textContent,'Not calibrated');
+ assert.equal($('live-turbidity-ntu').textContent,'315.74 NTU (illustrative)');
  assert($('calibration-fields').disabled);
  $('calibration-start').click();await tick();assert(!$('calibration-fields').disabled);
  assert.equal($('ph-points').value,'2');assert($('ph-acid-field').hidden);
@@ -50,7 +50,7 @@ const tick=()=>new Promise(r=>setTimeout(r,20));
   assert.deepEqual(mutations.at(-1).ph,expected);
   assert.equal($('ph-pair').value,pair);
  }
- state.live.turbidityNTU=null;state.live.turbidityNTUState='not_calibrated';
+ state.live.turbidityNTU=null;state.live.turbidityNTUState='illustrative';
 
  const changeUnit=unit=>{$('turbidity-unit').value=unit;$('turbidity-unit').dispatchEvent(new w.Event('change'));};
  changeUnit('NTU');assert($('ntu-calibrated').checked && $('turbidity-custom').checked);assert(!$('ntu-calibration-panel').hidden);

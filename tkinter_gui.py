@@ -10,7 +10,9 @@ import config
 import temperature_units
 import sensor_control
 import webbrowser
-from local_controls import LocalControls
+from local_controls import LocalControls, style_controls
+from water_schedule_gui import WaterScheduleWindow
+from schedule_layout import FONT_STYLE, ScheduleLayout
 from gui_snapshot import SnapshotWorker
 from predictions import format_duration, format_float_status, get_sensor_numeric, build_sensor_alerts
 
@@ -23,7 +25,6 @@ ACCENT_WARNING = "#F59E0B"     # amber (pH)
 ACCENT_DANGER = "#EF4444"      # red
 ACCENT_PREDICTION = "#8B5CF6"  # purple (turbidity)
 
-FONT_STYLE = "Segoe UI"
 GUI_THEME_DB_KEY = "tkinter_gui_theme"
 
 LIGHT_THEME = {
@@ -187,6 +188,7 @@ class FocusedMonitorApp:
     # Theme handling
     # ------------------------------------------------------------------
     def _apply_theme_vars(self, theme):
+        style_controls(self.root, theme)
         self.bg_color = theme["bg"]
         self.panel_color = theme["panel"]
         self.card_color = theme["card"]
@@ -262,7 +264,7 @@ class FocusedMonitorApp:
         header.grid_columnconfigure(0, weight=1)
 
         tk.Label(
-            header, text="FISH MONITOR • LOCAL DASHBOARD",
+            header, text="SAMPLE DATA • LAPTOP PREVIEW" if config.SIMULATE_SENSORS else "FISH MONITOR • LOCAL DASHBOARD",
             font=(FONT_STYLE, 9, "bold"), bg=self.panel_color,
             fg=self.accent_green, anchor="w"
         ).grid(row=0, column=0, sticky="w", pady=(0, 2))
@@ -288,7 +290,7 @@ class FocusedMonitorApp:
                                   pad_x=8, pad_y=4)
         schedule_button = tk.Button(
             toolbar,
-            text="Schedule" if self.compact_screen else "Feeding Schedule",
+            text="Feeding" if self.compact_screen else "Feeding Schedule",
             command=self.open_feeding_schedule_window,
             font=(FONT_STYLE, 10, "bold"),
             bg=self.accent_green,
@@ -303,12 +305,16 @@ class FocusedMonitorApp:
         )
         schedule_button.grid(row=0, column=0, sticky="e", padx=(10, 8))
 
+        tk.Button(toolbar, text="Water changes" if self.compact_screen else "Water-change schedule",
+                  command=self.open_water_schedule, font=(FONT_STYLE, 10, "bold"),
+                  bg=self.accent_primary, fg="white", relief="flat", padx=10, pady=7
+                  ).grid(row=0, column=1, padx=4)
         tk.Button(toolbar, text="Controls & settings", command=self.open_controls_window,
                   font=(FONT_STYLE, 10, "bold"), bg=self.accent_primary, fg="white",
-                  relief="flat", padx=10, pady=7).grid(row=0, column=1, padx=6)
+                  relief="flat", padx=10, pady=7).grid(row=0, column=2, padx=6)
         tk.Button(toolbar, text="Open web", command=lambda: webbrowser.open(f"http://localhost:{config.WEB_PORT}"),
-                  relief="flat", padx=8, pady=7).grid(row=0, column=2, sticky="e", padx=6)
-        mode_pill.grid(row=0, column=3, sticky="e", padx=(0, 8))
+                  relief="flat", padx=8, pady=7).grid(row=0, column=3, sticky="e", padx=6)
+        mode_pill.grid(row=0, column=4, sticky="e", padx=(0, 8))
         mode_pill.grid_propagate(False)
         mode_label = tk.Label(mode_pill.inner, text=f"{self.mode_icon}  {self.mode_text}",
                                font=(FONT_STYLE, 11, "bold"),
@@ -406,7 +412,17 @@ class FocusedMonitorApp:
         if window is not None and window.winfo_exists():
             window.lift()
         else:
-            self.controls_window = LocalControls(self.root, self.open_feeding_schedule_window, self.set_temperature_unit)
+            self.controls_window = LocalControls(self.root, self.open_feeding_schedule_window,
+                                                 self.set_temperature_unit, self.open_water_schedule)
+
+    def open_water_schedule(self):
+        window = getattr(self, 'water_schedule_window', None)
+        if window is None or not window.winfo_exists():
+            self.water_schedule_window = WaterScheduleWindow(self)
+        else:
+            window.deiconify()
+            window.lift()
+            window.focus_set()
 
     def open_feeding_schedule_window(self):
         if self.schedule_ui:
@@ -422,69 +438,8 @@ class FocusedMonitorApp:
                 pass
 
         window = tk.Toplevel(self.root)
-        window.title("Feeding Schedule")
-        window.configure(bg=self.bg_color)
-        window.minsize(720, 500)
-        window.resizable(True, True)
-        window.transient(self.root)
-
-        width = min(900, max(720, int(self.root.winfo_screenwidth() * 0.72)))
-        height = min(650, max(500, int(self.root.winfo_screenheight() * 0.72)))
-        x_pos = max(0, (self.root.winfo_screenwidth() - width) // 2)
-        y_pos = max(0, (self.root.winfo_screenheight() - height) // 2)
-        window.geometry(f"{width}x{height}+{x_pos}+{y_pos}")
-
-        container = tk.Frame(window, bg=self.bg_color)
-        container.pack(expand=True, fill="both", padx=22, pady=20)
-        container.grid_columnconfigure(0, weight=1)
-        container.grid_rowconfigure(2, weight=1)
-
-        header = tk.Frame(container, bg=self.bg_color)
-        header.grid(row=0, column=0, sticky="ew", pady=(0, 14))
-        header.grid_columnconfigure(0, weight=1)
-        tk.Label(
-            header,
-            text="Feeding Schedule",
-            font=(FONT_STYLE, 20, "bold"),
-            bg=self.bg_color,
-            fg=self.text_main,
-            anchor="w",
-        ).grid(row=0, column=0, sticky="w")
-        tk.Label(
-            header,
-            text=f"Recurring schedules • Timezone: {config.FEEDING_TIMEZONE}",
-            font=(FONT_STYLE, 10),
-            bg=self.bg_color,
-            fg=self.text_sub,
-            anchor="w",
-        ).grid(row=1, column=0, sticky="w", pady=(3, 0))
-        tk.Button(
-            header,
-            text="Close",
-            command=self._close_schedule_window,
-            font=(FONT_STYLE, 10, "bold"),
-            bg=self.card_soft,
-            fg=self.text_main,
-            activebackground=self.border_color,
-            relief="flat",
-            padx=14,
-            pady=7,
-            cursor="hand2",
-        ).grid(row=0, column=1, rowspan=4, sticky="e")
-
-        form = tk.Frame(
-            container,
-            bg=self.panel_color,
-            highlightthickness=1,
-            highlightbackground=self.border_color,
-            padx=16,
-            pady=14,
-        )
-        form.grid(row=1, column=0, sticky="ew", pady=(0, 14))
-        form.grid_columnconfigure(0, weight=1)
-        form.grid_columnconfigure(1, weight=1)
-        form.grid_columnconfigure(2, weight=1)
-
+        layout = ScheduleLayout(window, self, "Feeding Schedule", self._close_schedule_window)
+        header, form = layout.header, layout.form
         cycles_var = tk.StringVar(value="3")
         day_var = tk.StringVar(value=config.FEEDING_DAY_NAMES[0])
         hour_var = tk.StringVar(value="08")
@@ -503,39 +458,8 @@ class FocusedMonitorApp:
             anchor="w",
         ).grid(row=2, column=0, sticky="w", pady=(5, 0))
 
-        self._create_schedule_field_label(form, "Day", 0)
-        day_input = ttk.Combobox(
-            form,
-            textvariable=day_var,
-            values=config.FEEDING_DAY_NAMES,
-            state="readonly",
-            font=(FONT_STYLE, 11),
-        )
-        day_input.grid(row=1, column=0, sticky="ew", padx=(0, 8), pady=(5, 10))
-
-        self._create_schedule_field_label(form, "Hour (24-hour)", 1)
-        hour_input = ttk.Combobox(
-            form,
-            textvariable=hour_var,
-            values=tuple(f"{value:02d}" for value in range(24)),
-            state="readonly",
-            font=(FONT_STYLE, 11),
-        )
-        hour_input.grid(row=1, column=1, sticky="ew", padx=8, pady=(5, 10))
-
-        self._create_schedule_field_label(form, "Minute", 2)
-        minute_input = ttk.Combobox(
-            form,
-            textvariable=minute_var,
-            values=tuple(f"{value:02d}" for value in range(60)),
-            state="readonly",
-            font=(FONT_STYLE, 11),
-        )
-        minute_input.grid(row=1, column=2, sticky="ew", padx=(8, 0), pady=(5, 10))
-
-        form.grid_columnconfigure(3, weight=1)
-        self._create_schedule_field_label(form, "Cycles (whole number)", 3)
-        ttk.Entry(form, textvariable=cycles_var, width=12).grid(row=1, column=3, padx=8, sticky="ew")
+        layout.day_and_time(day_var, hour_var, minute_var)
+        layout.field(3, "Cycles (whole number)", cycles_var, width=12)
         form_buttons = tk.Frame(form, bg=self.panel_color)
         form_buttons.grid(row=2, column=0, columnspan=4, sticky="ew")
         tk.Button(
@@ -577,44 +501,14 @@ class FocusedMonitorApp:
             anchor="w",
         ).pack(side="left", fill="x", expand=True, padx=(8, 0))
 
-        table_frame = tk.Frame(
-            container,
-            bg=self.panel_color,
-            highlightthickness=1,
-            highlightbackground=self.border_color,
-            padx=10,
-            pady=10,
-        )
-        table_frame.grid(row=2, column=0, sticky="nsew")
-        table_frame.grid_columnconfigure(0, weight=1)
-        table_frame.grid_rowconfigure(0, weight=1)
-
-        style = ttk.Style(window)
-        style.configure(
-            "FeedingSchedule.Treeview",
-            font=(FONT_STYLE, 10),
-            rowheight=34,
-            background=self.card_color,
-            fieldbackground=self.card_color,
-            foreground=self.text_main,
-        )
-        style.configure(
-            "FeedingSchedule.Treeview.Heading",
-            font=(FONT_STYLE, 10, "bold"),
-        )
-        style.map(
-            "FeedingSchedule.Treeview",
-            background=[("selected", self.accent_primary)],
-            foreground=[("selected", "#FFFFFF")],
-        )
-
+        table_frame = layout.table
         columns = ("day", "time", "cycles", "next_feed", "status", "last_feed")
         tree = ttk.Treeview(
             table_frame,
             columns=columns,
             show="headings",
             selectmode="browse",
-            style="FeedingSchedule.Treeview",
+            style="Schedule.Treeview",
         )
         tree.heading("day", text="Day")
         tree.heading("time", text="Time")
@@ -635,8 +529,7 @@ class FocusedMonitorApp:
         scrollbar.grid(row=0, column=1, sticky="ns")
         tree.configure(yscrollcommand=scrollbar.set)
 
-        actions = tk.Frame(container, bg=self.bg_color)
-        actions.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        actions = layout.actions
         toggle_button = tk.Button(
             actions,
             text="Select a Schedule",
@@ -697,16 +590,6 @@ class FocusedMonitorApp:
         window.bind("<Escape>", lambda _event: self._close_schedule_window())
         self._refresh_schedule_tree()
         self._schedule_window_auto_refresh()
-
-    def _create_schedule_field_label(self, parent, text, column):
-        tk.Label(
-            parent,
-            text=text,
-            font=(FONT_STYLE, 10, "bold"),
-            bg=self.panel_color,
-            fg=self.text_main,
-            anchor="w",
-        ).grid(row=0, column=column, sticky="w", padx=(0 if column == 0 else 8, 0))
 
     def _close_schedule_window(self):
         if not self.schedule_ui:
@@ -1530,11 +1413,6 @@ class FocusedMonitorApp:
         water = getattr(self, '_desktop_controls', {}).get('waterControl', {})
         if water.get('calibrationActive'):
             return 'Calibration active: automatic pH correction paused.'
-        settling = water.get('phSettling', {})
-        if settling.get('active'):
-            if settling.get('waitingForNormal'):
-                return 'pH correction waits until pumps stop and level is Normal.'
-            return f"pH settling: {settling.get('remainingSeconds', 0)} seconds remaining."
         if str(value).strip().upper() == "DISABLED":
             return "Disabled by operator; alerts and automatic actions bypassed."
         if str(value).strip().upper() == "PAUSED":

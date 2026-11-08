@@ -87,10 +87,15 @@ function checkScene() {
     choose('blue-tang',5);
     assert.equal(school.childElementCount,24);
     assert(add.disabled);
-    for (let i = 0; i < 30; i++) remove.click();
+    const clear = doc.querySelector('#fish-clear');
+    clear.click();
+    assert(clear.disabled);
+    assert.equal(doc.querySelector('#fish-count').textContent,'0');
+    assert.equal(w.localStorage.getItem('aquapi-scene-fish-roster'),'[]');
     assert.equal(school.childElementCount,0);
     assert(remove.disabled);
     choose('glo-tetra');
+    assert(!clear.disabled);
     assert(school.querySelector('img').src.endsWith('/glo-tetra.webp'));
     assert.equal(school.querySelector('img').alt,'');
     assert.equal(doc.querySelector('#fish-count').textContent,'1');

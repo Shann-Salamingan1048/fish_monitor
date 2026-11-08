@@ -28,8 +28,30 @@ LIMIT_FIELDS = (
 )
 
 
+def style_controls(root, theme):
+    style = ttk.Style(root)
+    style.configure('Aqua.TFrame', background=theme['bg'])
+    style.configure('Aqua.Card.TFrame', background=theme['panel'])
+    style.configure('Aqua.TLabel', background=theme['panel'], foreground=theme['text_main'], font=('DejaVu Sans', 10))
+    style.configure('Aqua.Title.TLabel', background=theme['bg'], foreground=theme['text_main'], font=('DejaVu Sans', 19, 'bold'))
+    style.configure('Aqua.Heading.TLabel', background=theme['panel'], foreground=theme['text_main'], font=('DejaVu Sans', 15, 'bold'))
+    style.configure('Aqua.Status.TLabel', background=theme['info_box_bg'], foreground=theme['text_main'], padding=12, font=('DejaVu Sans', 10))
+    style.configure('Aqua.Message.TLabel', background=theme['bg'], foreground=theme['text_main'], font=('DejaVu Sans', 10))
+    style.configure('Aqua.TButton', padding=(12, 9), font=('DejaVu Sans', 10), background=theme['card_soft'], foreground=theme['text_main'])
+    style.map('Aqua.TButton', background=[('active', theme['border'])], foreground=[('disabled', '#8494a2')])
+    style.configure('Aqua.Primary.TButton', padding=(12, 9), font=('DejaVu Sans', 10), background='#126b80', foreground='white')
+    style.map('Aqua.Primary.TButton', background=[('disabled', '#a5bac0'), ('active', '#0b5264')], foreground=[('disabled', 'white'), ('!disabled', 'white')])
+    style.configure('Aqua.Danger.TButton', padding=(12, 9), font=('DejaVu Sans', 10), background='#b73542', foreground='white')
+    style.map('Aqua.Danger.TButton', background=[('disabled', '#c6a5a8'), ('active', '#922832')], foreground=[('!disabled', 'white')])
+    style.configure('Aqua.Nav.TButton', padding=(12, 11), anchor='w', font=('DejaVu Sans', 10), background=theme['bg'], foreground=theme['text_sub'])
+    style.map('Aqua.Nav.TButton', background=[('pressed', '#126b80'), ('active', theme['border'])], foreground=[('pressed', 'white')])
+    style.configure('Aqua.TEntry', padding=8, font=('DejaVu Sans', 11))
+    style.configure('Aqua.TLabelframe', background=theme['panel'], padding=12, borderwidth=1, relief='solid', bordercolor=theme['border'], lightcolor=theme['border'], darkcolor=theme['border'])
+    style.configure('Aqua.TLabelframe.Label', background=theme['panel'], foreground=theme['text_main'], font=('DejaVu Sans', 10, 'bold'))
+
+
 class LocalControls(tk.Toplevel):
-    def __init__(self, parent, schedule_callback, on_temperature_unit_change=None):
+    def __init__(self, parent, schedule_callback, on_temperature_unit_change, water_schedule_callback):
         super().__init__(parent)
         self.temperature_unit = 'F' if config.get_db_value('gui_temperature_unit', 'C') == 'F' else 'C'
         self.on_temperature_unit_change = on_temperature_unit_change
@@ -37,12 +59,10 @@ class LocalControls(tk.Toplevel):
         self.geometry(f'{min(860, self.winfo_screenwidth()-40)}x{min(610, self.winfo_screenheight()-60)}')
         self.minsize(620, 400)
         self.transient(parent)
-        self.configure(bg='#f3f7fa')
-        self._style_controls()
+        self.configure(bg=ttk.Style(self).lookup('Aqua.TFrame', 'background'))
         self.busy = False
         self.results = queue.Queue(maxsize=1)
         self._last_status = None
-        self.water_schedule_window = None
         self.after_id = None
         self.command_buttons = []
         self.sensor_rows = {}
@@ -72,7 +92,7 @@ class LocalControls(tk.Toplevel):
             self.navigation[key] = button
             page = ttk.Frame(content, style='Aqua.Card.TFrame')
             page.grid(row=0, column=0, sticky='nsew')
-            canvas = tk.Canvas(page, bg='white', highlightthickness=0, width=400)
+            canvas = tk.Canvas(page, bg=ttk.Style(self).lookup('Aqua.Card.TFrame', 'background'), highlightthickness=0, width=400)
             scrollbar = ttk.Scrollbar(page, orient='vertical', command=canvas.yview)
             canvas.configure(yscrollcommand=scrollbar.set)
             scrollbar.pack(side='right', fill='y')
@@ -86,7 +106,7 @@ class LocalControls(tk.Toplevel):
         self.bind('<Button-4>', lambda event: self._scroll(event, -1))
         self.bind('<Button-5>', lambda event: self._scroll(event, 1))
         self._build_feeding(schedule_callback)
-        self._build_pumps()
+        self._build_pumps(water_schedule_callback)
         self._build_fan()
         self._build_camera()
         self._build_limits()
@@ -100,27 +120,6 @@ class LocalControls(tk.Toplevel):
         self.protocol('WM_DELETE_WINDOW', self.close)
         self.bind('<Escape>', lambda event: self.close())
         self.refresh()
-
-    def _style_controls(self):
-        style = ttk.Style(self)
-        style.configure('Aqua.TFrame', background='#f3f7fa')
-        style.configure('Aqua.Card.TFrame', background='white')
-        style.configure('Aqua.TLabel', background='white', foreground='#183349', font=('DejaVu Sans', 10))
-        style.configure('Aqua.Title.TLabel', background='#f3f7fa', foreground='#183349', font=('DejaVu Sans', 19, 'bold'))
-        style.configure('Aqua.Heading.TLabel', background='white', foreground='#183349', font=('DejaVu Sans', 15, 'bold'))
-        style.configure('Aqua.Status.TLabel', background='#eef7f9', foreground='#16596a', padding=12, font=('DejaVu Sans', 10))
-        style.configure('Aqua.Message.TLabel', background='#f3f7fa', foreground='#175d70', font=('DejaVu Sans', 10))
-        style.configure('Aqua.TButton', padding=(12, 9), font=('DejaVu Sans', 10), background='#eaf1f7', foreground='#183349')
-        style.map('Aqua.TButton', background=[('active', '#dce9f1')], foreground=[('disabled', '#8494a2')])
-        style.configure('Aqua.Primary.TButton', padding=(12, 9), font=('DejaVu Sans', 10), background='#126b80', foreground='white')
-        style.map('Aqua.Primary.TButton', background=[('disabled', '#a5bac0'), ('active', '#0b5264')], foreground=[('disabled', 'white'), ('!disabled', 'white')])
-        style.configure('Aqua.Danger.TButton', padding=(12, 9), font=('DejaVu Sans', 10), background='#b73542', foreground='white')
-        style.map('Aqua.Danger.TButton', background=[('disabled', '#c6a5a8'), ('active', '#922832')], foreground=[('!disabled', 'white')])
-        style.configure('Aqua.Nav.TButton', padding=(12, 11), anchor='w', font=('DejaVu Sans', 10), background='#f3f7fa', foreground='#42596c')
-        style.map('Aqua.Nav.TButton', background=[('pressed', '#126b80'), ('active', '#e2edf3')], foreground=[('pressed', 'white')])
-        style.configure('Aqua.TEntry', padding=8, font=('DejaVu Sans', 11))
-        style.configure('Aqua.TLabelframe', background='white', padding=12, borderwidth=1, relief='solid', bordercolor='#d7e3eb', lightcolor='#d7e3eb', darkcolor='#d7e3eb')
-        style.configure('Aqua.TLabelframe.Label', background='white', foreground='#126b80', font=('DejaVu Sans', 10, 'bold'))
 
     def _title(self, parent, text):
         ttk.Label(parent, text=text, style='Aqua.Heading.TLabel').pack(anchor='w', pady=(0, 16))
@@ -152,7 +151,7 @@ class LocalControls(tk.Toplevel):
         self._button(row, 'Resume schedule', lambda: self.run(lambda: feeding_control.set_paused(False))).pack(side='left')
         ttk.Button(panel, text='Feeding schedule', style='Aqua.Primary.TButton', command=schedule_callback).pack(anchor='w')
 
-    def _build_pumps(self):
+    def _build_pumps(self, water_schedule_callback):
         panel = self.tabs['Water pumps']
         self._title(panel, 'Water Changes')
         self.pump_status = self._status(panel)
@@ -168,7 +167,7 @@ class LocalControls(tk.Toplevel):
             self._button(grid, label, lambda a=action: self.run(lambda: water_control.manual_action(a)), style).grid(row=i//2, column=i%2, sticky='ew', padx=4, pady=5)
         self._button(panel, 'Resume automatic control', lambda: self.run(lambda: water_control.manual_action('auto_resume'))).pack(fill='x', padx=4, pady=(8, 18))
         ttk.Separator(panel).pack(fill='x', pady=(0, 18))
-        ttk.Button(panel, text='Water-change schedule', style='Aqua.Primary.TButton', command=self.open_water_schedule).pack(anchor='w')
+        ttk.Button(panel, text='Water-change schedule', style='Aqua.Primary.TButton', command=water_schedule_callback).pack(anchor='w')
 
     def _build_fan(self):
         panel = self.tabs['Fan']; self._title(panel, 'Cooling Fan')
@@ -302,13 +301,6 @@ class LocalControls(tk.Toplevel):
                 self.results.put((False, str(exc), False))
         threading.Thread(target=work, name='AquaPi local command', daemon=True).start()
 
-    def open_water_schedule(self):
-        if self.water_schedule_window and self.water_schedule_window.winfo_exists():
-            self.water_schedule_window.lift()
-        else:
-            from water_schedule_gui import WaterScheduleWindow
-            self.water_schedule_window = WaterScheduleWindow(self)
-
     @staticmethod
     def _read_status():
         return dict(fan=fan_control.get_status(), sensors=sensor_control.get_status(),
@@ -370,8 +362,6 @@ class LocalControls(tk.Toplevel):
         if schedule: self.after_id = self.after(100, self.refresh)
 
     def close(self):
-        if self.water_schedule_window and self.water_schedule_window.winfo_exists():
-            self.water_schedule_window.close()
         self.worker.close()
         if self.after_id: self.after_cancel(self.after_id)
         self.destroy()

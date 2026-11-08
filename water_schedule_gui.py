@@ -1,125 +1,186 @@
-"""Tk schedule editor; database and serial work run off the Tk event loop."""
+"""Desktop editor for scheduled water changes."""
 import queue
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox, ttk
+
 import config
 import water_schedule
 from gui_snapshot import SnapshotWorker
+from schedule_layout import FONT_STYLE, ScheduleLayout, schedule_button
 
 
 class WaterScheduleWindow(tk.Toplevel):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.title('AquaPi • Water-change schedule')
-        self.geometry(f'{min(850,self.winfo_screenwidth()-40)}x{min(650,self.winfo_screenheight()-60)}')
-        self.minsize(580,400)
-        self.transient(parent)
-        self.configure(bg='#f3f7fa')
-        self.editing=None;self.rows={};self.busy=False;self.signature=None
-        self.results=queue.Queue();self.after_id=None
-        panel=ttk.Frame(self,padding=20,style='Aqua.Card.TFrame');panel.pack(fill='both',expand=True)
-        ttk.Label(panel,style='Aqua.TLabel',text='Water-change schedule',font=('Arial',16,'bold')).pack(anchor='w')
-        self.summary=tk.StringVar();ttk.Label(panel,style='Aqua.TLabel',textvariable=self.summary,wraplength=550).pack(anchor='w',pady=6)
-        form=ttk.Frame(panel,style='Aqua.Card.TFrame');form.pack(fill='x')
-        self.day=tk.StringVar(value=config.FEEDING_DAY_NAMES[0]);self.at=tk.StringVar()
-        self.drain=tk.StringVar();self.refill=tk.StringVar()
-        self.controls=[]
-        for i,(label,var) in enumerate([('Day',self.day),('Time (HH:MM)',self.at),('Drain duration (seconds)',self.drain),('Refill timeout (seconds)',self.refill)]):
-            ttk.Label(form,style='Aqua.TLabel',text=label).grid(row=i,column=0,sticky='w',pady=4)
-            field=ttk.Combobox(form,textvariable=var,values=config.FEEDING_DAY_NAMES,state='readonly',width=28) if i==0 else ttk.Entry(form,textvariable=var,width=18)
-            field.grid(row=i,column=1,sticky='ew',padx=8,pady=4);self.controls.append(field)
-        form.columnconfigure(1,weight=1)
-        actions=ttk.Frame(panel,style='Aqua.Card.TFrame');actions.pack(fill='x',pady=4)
-        self.save_button=ttk.Button(actions,style='Aqua.Primary.TButton',text='Add schedule',command=self.save);self.save_button.pack(side='left',padx=3);self.controls.append(self.save_button)
-        self.cancel_button=ttk.Button(actions,style='Aqua.Primary.TButton',text='Cancel edit',command=self.reset);self.cancel_button.pack(side='left',padx=3);self.controls.append(self.cancel_button)
-        area=ttk.Frame(panel,style='Aqua.Card.TFrame');area.pack(fill='both',expand=True,pady=8)
-        columns=('day','time','drain','refill','state','last')
-        self.tree=ttk.Treeview(area,columns=columns,show='headings',height=6)
-        for key,title,width in zip(columns,('Day','Time','Drain (s)','Refill max (s)','State','Last run'),(180,65,75,100,65,95)):
-            self.tree.heading(key,text=title);self.tree.column(key,width=width,minwidth=45)
-        vbar=ttk.Scrollbar(area,orient='vertical',command=self.tree.yview);vbar.pack(side='right',fill='y')
-        hbar=ttk.Scrollbar(area,orient='horizontal',command=self.tree.xview);hbar.pack(side='bottom',fill='x')
-        self.tree.configure(yscrollcommand=vbar.set,xscrollcommand=hbar.set);self.tree.pack(fill='both',expand=True)
-        buttons=ttk.Frame(panel,style='Aqua.Card.TFrame');buttons.pack(fill='x')
-        for title,callback in [('Edit selected',self.edit),('Pause / Enable',self.toggle),('Delete',self.delete),('Stop water change',self.stop)]:
-            button=ttk.Button(buttons,style='Aqua.TButton',text=title,command=callback);button.pack(side='left',padx=3,pady=5);self.controls.append(button)
-        self.message=tk.StringVar();ttk.Label(panel,style='Aqua.TLabel',textvariable=self.message,wraplength=550).pack(anchor='w',pady=5)
-        self.worker=SnapshotWorker(water_schedule.response)
-        self.protocol('WM_DELETE_WINDOW',self.close);self.bind('<Escape>',lambda _:self.close())
+    def __init__(self, app):
+        super().__init__(app.root)
+        self.rows = {}
+        self.loaded_id = None
+        self.busy = False
+        self.results = queue.Queue()
+        self.after_id = None
+        layout = ScheduleLayout(self, app, "Water-change Schedule", self.destroy)
+        self.summary = tk.StringVar()
+        tk.Label(layout.header, textvariable=self.summary, font=(FONT_STYLE, 10),
+                 bg=app.bg_color, fg=app.text_main, justify="left", wraplength=550
+                 ).grid(row=2, column=0, sticky="w", pady=(5, 0))
+
+        self.day = tk.StringVar(value=config.FEEDING_DAY_NAMES[0])
+        self.hour = tk.StringVar(value="08")
+        self.minute = tk.StringVar(value="00")
+        self.drain = tk.StringVar()
+        self.refill = tk.StringVar()
+        self.selectors = layout.day_and_time(self.day, self.hour, self.minute)
+        self.entries = (layout.field(3, "Drain (seconds)", self.drain),
+                        layout.field(4, "Refill timeout (s)", self.refill))
+        form_actions = tk.Frame(layout.form, bg=app.panel_color)
+        form_actions.grid(row=2, column=0, columnspan=5, sticky="ew")
+        self.add_button = schedule_button(form_actions, "Add Schedule", self.save,
+                                          app.accent_green, "#059669")
+        self.save_button = schedule_button(form_actions, "Save Selected Changes",
+                                           lambda: self.save(self.selected_id()),
+                                           app.accent_primary, "#1D4ED8")
+        for button in (self.add_button, self.save_button):
+            button.pack(side="left", padx=(0, 8))
+        self.message = tk.StringVar(value="Select a schedule below to edit it.")
+        tk.Label(form_actions, textvariable=self.message, font=(FONT_STYLE, 9), anchor="w",
+                 justify="left", wraplength=265, bg=app.panel_color, fg=app.text_sub
+                 ).pack(side="left", fill="x", expand=True)
+
+        columns = ("day", "time", "drain", "refill", "state", "last")
+        self.tree = ttk.Treeview(layout.table, columns=columns, show="headings",
+                                 selectmode="browse", style="Schedule.Treeview", height=5)
+        for key, title, width in zip(columns, ("Day", "Time", "Drain (s)", "Refill max (s)",
+                                              "Status", "Last run"), (170, 75, 85, 110, 80, 120)):
+            self.tree.heading(key, text=title)
+            self.tree.column(key, width=width, minwidth=55, anchor="w" if key in ("day", "last") else "center")
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        scroll = ttk.Scrollbar(layout.table, orient="vertical", command=self.tree.yview)
+        scroll.grid(row=0, column=1, sticky="ns")
+        self.tree.configure(yscrollcommand=scroll.set)
+        self.tree.bind("<<TreeviewSelect>>", self.update_selection)
+        self.toggle_button = schedule_button(layout.actions, "Pause Selected", self.toggle,
+                                             app.accent_warning, "#D97706")
+        self.delete_button = schedule_button(layout.actions, "Delete Selected", self.delete,
+                                             app.accent_danger, "#DC2626")
+        self.stop_button = schedule_button(layout.actions, "Stop water change", self.stop,
+                                           app.accent_danger, "#DC2626")
+        for button in (self.toggle_button, self.delete_button, self.stop_button):
+            button.pack(side="left", padx=(0, 8))
+        self.worker = SnapshotWorker(water_schedule.response)
+        schedule_button(layout.actions, "Refresh", self.worker.request, app.card_soft,
+                        app.border_color, app.text_main).pack(side="right")
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self.bind("<Escape>", lambda _: self.destroy())
+        self.bind("<Destroy>", self._on_destroy, add="+")
+        self.update_selection()
         self.poll()
 
-    def selected(self):
-        selection=self.tree.selection()
-        if not selection:
-            self.message.set('Select a schedule first.');return None
-        return self.rows.get(int(selection[0]))
+    def selected_id(self):
+        selection = self.tree.selection()
+        return int(selection[0]) if selection else None
 
-    def reset(self):
-        if self.busy:return
-        self.editing=None;self.at.set('');self.drain.set('');self.refill.set('');self.save_button.configure(text='Add schedule')
+    def update_selection(self, _event=None):
+        row = self.rows.get(self.selected_id())
+        selected_state = "normal" if row and not self.busy else "disabled"
+        for button in (self.save_button, self.toggle_button, self.delete_button):
+            button.configure(state=selected_state)
+        self.toggle_button.configure(text="Enable Selected" if row and not row["enabled"] else "Pause Selected")
+        if self.busy:
+            return
+        if row and self.loaded_id != row["id"]:
+            self.day.set(row["dayName"])
+            hour, minute = row["time"].split(":")
+            self.hour.set(hour)
+            self.minute.set(minute)
+            self.drain.set(row["drainSeconds"])
+            self.refill.set(row["refillSeconds"])
+        self.loaded_id = row["id"] if row else None
 
-    def edit(self):
-        if self.busy:return
-        row=self.selected()
-        if not row:return
-        self.editing=row['id'];self.day.set(row['dayName']);self.at.set(row['time'])
-        self.drain.set(str(row['drainSeconds']));self.refill.set(str(row['refillSeconds']));self.save_button.configure(text='Save changes')
+    def set_busy(self, busy):
+        self.busy = busy
+        for field in self.selectors:
+            field.configure(state="disabled" if busy else "readonly")
+        for widget in (*self.entries, self.add_button, self.stop_button):
+            widget.configure(state="disabled" if busy else "normal")
+        self.update_selection()
 
-    def run(self, callback, text, clear=False):
-        if self.busy:return
-        self.busy=True
-        for widget in self.controls:widget.configure(state='disabled')
+    def run(self, callback, success_message):
+        if self.busy:
+            return
+        self.set_busy(True)
+
         def work():
-            try: callback();self.results.put((True,text,clear))
-            except Exception as exc:self.results.put((False,str(exc),False))
-        threading.Thread(target=work,daemon=True).start()
+            try:
+                callback()
+                self.results.put(success_message)
+            except Exception as exc:
+                self.results.put(str(exc))
 
-    def save(self):
-        payload=dict(day=config.FEEDING_DAY_NAMES.index(self.day.get()),time=self.at.get(),
-                     drainSeconds=self.drain.get(),refillSeconds=self.refill.get())
-        target=self.editing
-        self.run(lambda:water_schedule.save(payload,target),'Water schedule saved.',True)
+        threading.Thread(target=work, daemon=True).start()
+
+    def save(self, schedule_id=None):
+        payload = dict(day=config.FEEDING_DAY_NAMES.index(self.day.get()),
+                       time=f"{self.hour.get()}:{self.minute.get()}",
+                       drainSeconds=self.drain.get(), refillSeconds=self.refill.get())
+        self.run(lambda: water_schedule.save(payload, schedule_id), "Water schedule saved.")
 
     def toggle(self):
-        row=self.selected()
-        if row:self.run(lambda:water_schedule.save({'enabled':not row['enabled']},row['id']),'Schedule updated.')
+        row = self.rows.get(self.selected_id())
+        if row:
+            self.run(lambda: water_schedule.save({"enabled": not row["enabled"]}, row["id"]),
+                     "Schedule updated.")
 
     def delete(self):
-        row=self.selected()
-        if row and messagebox.askyesno('Delete schedule','Delete this water-change schedule?',parent=self):
-            self.run(lambda:water_schedule.delete(row['id']),'Schedule deleted.',True)
+        target = self.selected_id()
+        if target is not None and messagebox.askyesno("Delete schedule", "Delete this water-change schedule?", parent=self):
+            self.run(lambda: water_schedule.delete(target), "Schedule deleted.")
 
     def stop(self):
-        self.run(water_schedule.stop,'Stop requested.')
+        self.run(water_schedule.stop, "Stop requested.")
 
     def render(self, data):
-        job=data['active'] or data['last']
-        upcoming=data['nextRun']['dateTime'].replace('T',' ') if data['nextRun'] else 'None'
-        text=f"Next: {upcoming} • {data['timezone']}"
-        if not data['ready']:text+='\nController disconnected.'
-        if job:text+=f"\n{'Current' if data['active'] else 'Last'}: {job['status']} • {job.get('reason') or ''}"
-        self.summary.set(text)
-        signature=repr(data['schedules'])
-        if signature==self.signature:return
-        self.signature=signature;selected=self.tree.selection();self.rows={r['id']:r for r in data['schedules']}
-        self.tree.delete(*self.tree.get_children())
-        for row in data['schedules']:
-            self.tree.insert('', 'end',iid=str(row['id']),values=(row['dayName'],row['time'],row['drainSeconds'],row['refillSeconds'],'Active' if row['enabled'] else 'Paused',row['lastStatus'] or 'Not run'))
-        if selected and int(selected[0]) in self.rows:self.tree.selection_set(selected)
+        job = data["active"] or data["last"]
+        upcoming = data["nextRun"]["dateTime"].replace("T", " ") if data["nextRun"] else "None"
+        lines = [f"Next water change: {upcoming}"]
+        if not data["ready"]:
+            lines.append("Controller disconnected.")
+        if job:
+            lines.append(f"{'Current' if data['active'] else 'Last'}: {job['status']} {job.get('reason') or ''}".strip())
+        self.summary.set("  •  ".join(lines))
+        rows = {row["id"]: row for row in data["schedules"]}
+        if rows == self.rows and list(rows) == list(self.rows):
+            return
+        self.rows = rows
+        for item in self.tree.get_children():
+            if int(item) not in rows:
+                self.tree.delete(item)
+        for index, (key, row) in enumerate(rows.items()):
+            values = (row["dayName"], row["time"], row["drainSeconds"], row["refillSeconds"],
+                      "Active" if row["enabled"] else "Paused", row["lastStatus"] or "Not run")
+            item = str(key)
+            if self.tree.exists(item):
+                self.tree.item(item, values=values)
+                self.tree.move(item, "", index)
+            else:
+                self.tree.insert("", index, iid=item, values=values)
+        self.update_selection()
 
     def poll(self):
         try:
-            ok,text,clear=self.results.get_nowait();self.busy=False;self.message.set(text)
-            for i,widget in enumerate(self.controls):widget.configure(state='readonly' if i==0 else 'normal')
-            if clear:self.reset()
+            message = self.results.get_nowait()
+            self.set_busy(False)
+            self.message.set(message)
             self.worker.request()
-        except queue.Empty:pass
-        try:self.render(self.worker.results.get_nowait())
-        except queue.Empty:pass
-        self.after_id=self.after(100,self.poll)
+        except queue.Empty:
+            pass
+        try:
+            self.render(self.worker.results.get_nowait())
+        except queue.Empty:
+            pass
+        self.after_id = self.after(100, self.poll)
 
-    def close(self):
-        self.worker.close()
-        if self.after_id:self.after_cancel(self.after_id)
-        self.destroy()
+    def _on_destroy(self, event):
+        if event.widget is self:
+            self.worker.close()
+            if self.after_id:
+                self.after_cancel(self.after_id)

@@ -295,9 +295,12 @@ def apply_packet(fields):
 def _ntu_reading(adc):
     points = _profile.get('turbidityPoints')
     ntu = estimate_ntu(adc, points)
-    state = ('unavailable' if adc is None else 'not_calibrated' if not points
+    state = ('unavailable' if adc is None else 'illustrative' if not points
              else 'out_of_range' if ntu is None else 'calibrated')
-    return {'turbidityNTU': ntu, 'turbidityNTUState': state}
+    # A scale illustration for Developer option only. Never feed it to tank rules.
+    illustration = (1023 - adc) * 1000 / 1023 if adc is not None and ntu is None else None
+    return {'turbidityNTU': ntu, 'turbidityNTUState': state,
+            'illustrativeNTU': illustration}
 
 
 def clarity_labels():
@@ -342,9 +345,11 @@ def status():
     with config.sensor_lock:
         age = None if _live['receivedAt'] is None else max(0, time.monotonic() - _live['receivedAt'])
         fresh = age is not None and age <= config.QUALITY_MAX_PACKET_GAP_SECONDS
-        adc = _live['turbidityADC'] if fresh else None
+        import water_control
+        policy = water_control.get_sensor_policy()
+        adc = _live['turbidityADC'] if fresh and policy['turbidity'] else None
         return dict(profile=copy.deepcopy(_profile), defaults=copy.deepcopy(DEFAULT_RANGES),
                     categories=list(CATEGORIES), active=_maintenance,
-                    live={'phADC': _live['phADC'] if fresh else None,
+                    live={'phADC': _live['phADC'] if fresh and policy['ph'] else None,
                           'turbidityADC': adc, **_ntu_reading(adc),
                           'ageSeconds': age, 'fresh': fresh})

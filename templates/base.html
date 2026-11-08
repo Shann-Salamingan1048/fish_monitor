@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>
+    try { document.documentElement.dataset.theme = localStorage.getItem('aquapi.theme') === 'light' ? 'light' : 'dark'; } catch (_) {}
+  </script>
   <title>AquaPi · {{ title }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=36">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=37">
   <link rel="stylesheet" href="{{ url_for('static', filename='icons/icons.css') }}">
   {% block head %}{% endblock %}
 </head>
@@ -26,11 +29,10 @@
     {% if page in ['feeding','water','fan','camera','settings'] %}
     <p class="access-note" data-admin-hint><a href="/access">Sign in</a> to use controls.</p>
     {% endif %}
-    <p id="sensor-recovery-status" class="control-note recovery-note" role="status" hidden></p>
     {% block content %}{% endblock %}
   </main>
 </div>
-<script src="{{ url_for('static', filename='script.js') }}?v=38"></script>
+<script src="{{ url_for('static', filename='script.js') }}?v=39"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

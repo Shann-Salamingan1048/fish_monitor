@@ -9,7 +9,7 @@ One Arduino Mega 2560 reads the sensors and controls the pumps, fan relay and PC
 
 The firmware and Python use the same serial names: `MegaInput`, `MegaInputStatus`, `MegaOutput`, `MegaServo`, `MegaConfig` and `AquaPiMega`. Input/output are logical roles on the same physical board, not separate devices. USB speed is 115200 baud.
 
-This release requires updating the Python application **and** uploading the included firmware together. Old protocol versions cannot be mixed with this one. Extract into a clean folder so obsolete sketch files are not included accidentally.
+Use the included combined Mega firmware when setting up a new controller. This dashboard and laptop-preview update requires only the application files if that sketch is already installed. Extract into a clean folder so obsolete sketch files are not included accidentally.
 
 Automatic pump/fan decisions run locally on the Mega. Saved settings and calibration are synchronized from the Pi into controller RAM. System Off and the four-second heartbeat timeout stop the actuators. USB reconnection leaves pumps stopped until an operator resumes automatic control or chooses a manual action.
 
@@ -31,13 +31,25 @@ The Pi can open `http://127.0.0.1:5000`. On a phone connected to the same Wi-Fi,
 
 One Mega does not guarantee a cure for pump-induced USB disconnections. Electrical interference or supply/ground disturbances still need hardware diagnosis if they persist.
 
+## Laptop preview
+
+In `main.py`, uncomment the following line, save, then run `python main.py` from this folder. For a browser-only preview, run `python main.py --headless --open-browser`.
+
+```python
+config.SIMULATE_SENSORS = True
+```
+
+The desktop and web dashboard show sample temperature, pH, level, clarity and raw ADC readings. Sign in as Admin to see the live ADC-to-NTU calculation in Developer option. The preview uses its own `fish_tank_preview.db`. Sensor readings update every second. Hardware and scheduled jobs stay offline. To use the Mega, put the `#` back at the start of the line and restart.
+
+Choose **System settings → Display → Theme** on the web, or use the **Light/Dark** control on the desktop toolbar. Each browser and the desktop remember their own choice.
+
 ## Turbidity Developer option
 
-View live ADC and calibrated NTU together. Choose ADC or NTU clarity ranges, add known-NTU reference points, and save without re-uploading the Mega. Existing ADC calibration remains compatible. See `TURBIDITY_NTU.md` for the steps and distinction between web NTU and the separate serial diagnostic.
+View live ADC alongside an illustrative NTU calculation or an estimate based on saved references. Choose ADC or NTU clarity ranges, add known-NTU reference points, and save without re-uploading the Mega. Existing ADC calibration remains compatible. See `TURBIDITY_NTU.md` for the steps and distinction between web NTU and the separate serial diagnostic.
 
 ## Scheduled water changes
 
-Create weekly or everyday drain/refill schedules in Web → Water Changes → Water-change schedule, or GUI → Controls & settings → Water pumps → Water-change schedule. Both use the same database. This feature requires the updated combined Mega sketch. See `WATER_CHANGE_SCHEDULE.md` for setup, durations, float protection and skipped-run behavior.
+Create weekly or everyday drain/refill schedules in Web → Water Changes → Water-change schedule, or use Water-change schedule beside Feeding Schedule on the GUI dashboard. The same editor opens from Controls & settings → Water pumps. Both use the same database. This feature requires the updated combined Mega sketch. See `WATER_CHANGE_SCHEDULE.md` for setup, durations, float protection and skipped-run behavior.
 
 ## Turbidity predictions
 
@@ -47,4 +59,4 @@ The Pi uses recent raw ADC readings to estimate when the trend may enter the nex
 
 The web overview follows the tank timezone (Asia/Manila by default). Automatic scene lighting uses dawn from 05:00, day from 07:00, dusk from 17:00 and night from 19:00. Scene previews and Pause motion are local to the browser. The scene is illustrative and the Camera page shows the live tank.
 
-Real-Time Readout shows water temperature, pH, level and clarity. Expand a reading to inspect its recent range or open its graph. The clarity readout, scale and graph use the display names of the active turbidity calibration ranges. The scene starts with 10 animated fish. Select Add fish, set the quantity, then tap a species to add that many. The minus button removes the last fish. Each browser remembers its school of 0–24 fish. Tap Sensors to show or hide the readings. Fish follow Pause motion and the device’s reduced-motion setting. The clarity graph shows the last 30 samples collected on the Graphs page. For raw ADC and estimated NTU, open Developer option and find Turbidity calibration.
+Real-Time Readout shows water temperature, pH, level and clarity. Expand a reading to inspect its recent range or open its graph. The clarity readout, scale and graph use the display names of the active turbidity calibration ranges. The scene starts with 10 animated fish. Select Add fish, set the quantity, then tap a species to add that many. The minus button removes the last fish. Clear all fish empties the aquarium in this browser. Each browser remembers its school of 0–24 fish. Tap Sensors to show or hide the readings. Fish follow Pause motion and the device’s reduced-motion setting. The clarity graph shows the last 30 samples collected on the Graphs page. For raw ADC and estimated NTU, open Developer option and find Turbidity calibration.

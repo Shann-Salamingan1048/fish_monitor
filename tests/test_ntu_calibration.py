@@ -43,16 +43,23 @@ def test_all_adc_counts_match_web_and_mega_rules():
 
 
 def test_uncalibrated_outside_and_stale_readings(clock):
-    packet(); assert calibration.status()['live']['turbidityNTUState']=='not_calibrated'
+    calibration.set_active(True)
+    calibration.set_active(False)
+    packet(ta='900')
+    live = calibration.status()['live']
+    assert live['turbidityNTUState'] == 'illustrative'
+    assert live['illustrativeNTU'] == pytest.approx(120.2346, abs=.0001)
     install()
     for adc, label in [(0,'Critical custom'),(1023,'Clear custom')]:
         assert packet(ta=str(adc))[0]['turbidity']==label
         live=calibration.status()['live']
         assert live['turbidityADC']==adc and live['turbidityNTU'] is None
         assert live['turbidityNTUState']=='out_of_range'
+        assert live['illustrativeNTU'] == pytest.approx((1023-adc)*1000/1023)
     packet(ta='700');clock[0]+=4
     live=calibration.status()['live']
     assert live['turbidityADC'] is None and live['turbidityNTU'] is None
+    assert live['illustrativeNTU'] is None
     sensor_control.input_reconnected()
     assert calibration.status()['live']['turbidityNTUState']=='unavailable'
 
