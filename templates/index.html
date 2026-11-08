@@ -1,27 +1,29 @@
 {% extends "base.html" %}
 {% set page = "index" %}
 {% set title = "Real-Time Readout" %}
-{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='aquarium.css') }}?v=3">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='aquarium.css') }}?v=7">{% endblock %}
 {% block content %}
 <section class="reef" data-light="day" data-zone="{{ tank_timezone }}" aria-labelledby="reef-title">
   <div class="reef-shade" aria-hidden="true"></div>
   <div class="reef-ripple" aria-hidden="true"></div>
   <div class="reef-bubbles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
   <div class="reef-school" aria-hidden="true">
-    {% for fish in ['clownfish','blue-tang','yellow-tang'] %}
-    <div class="swim-lane"><div class="swim-turn"><img src="{{ url_for('static', filename='fish/' ~ fish ~ '.webp') }}" alt="" draggable="false"></div></div>
+    {% for i in range(10) %}
+    {% set fish = ['clownfish','blue-tang','yellow-tang'][i % 3] %}
+    <div class="swim-lane" data-species="{{ fish }}"><div class="swim-turn"><img src="{{ url_for('static', filename='fish/' ~ fish ~ '.webp') }}" alt="" draggable="false"></div></div>
     {% endfor %}
   </div>
-  <section class="reef-instruments" aria-labelledby="reef-title">
-    <div class="reef-panel-head">
-      <div><h2 id="reef-title">Real-Time Readout</h2><div class="reef-clock"><span id="time-val">—</span> · {{ tank_timezone }}</div></div>
-      <span id="reef-signal">Waiting</span>
-    </div>
+  <details class="reef-instruments" open>
+    <summary class="reef-panel-head">
+      <i class="ico ico-probes" aria-hidden="true"></i>
+      <span class="panel-heading"><strong id="reef-title">Real-Time Readout</strong><span class="closed-caption">Sensors</span><span class="reef-clock"><span id="time-val">—</span> · {{ tank_timezone }}</span></span>
+      <span id="reef-signal">Waiting</span><i class="ico ico-chevron" aria-hidden="true"></i>
+    </summary>
     <div class="probe-list">
-      {% for key, label, symbol, graph in [('temp','Water Temperature','°','tempChart'),('ph','Water pH','pH','phChart'),('water','Water Level','≋','floatChart'),('clarity','Water Clarity (Turbidity)','◈','turbidityChart')] %}
+      {% for key, label, symbol, graph in [('temp','Water Temperature','temp','tempChart'),('ph','Water pH','ph','phChart'),('water','Water Level','level','floatChart'),('clarity','Water Clarity (Turbidity)','clarity','turbidityChart')] %}
       <details class="probe probe-{{ key }}" data-probe="{{ key }}">
         <summary>
-          <span class="probe-label"><i aria-hidden="true">{{ symbol }}</i>{{ label }}</span>
+          <span class="probe-label"><i class="ico ico-{{ symbol }}" aria-hidden="true"></i>{{ label }}</span>
           <span class="probe-state">Waiting</span>
           <strong id="{{ key }}-val">—</strong>
           <canvas width="160" height="48" aria-hidden="true"></canvas>
@@ -33,21 +35,50 @@
       {% endfor %}
     </div>
     <a class="reef-trends" href="/graphs">Trend history <span aria-hidden="true">↗</span></a>
-  </section>
+  </details>
   <div class="reef-dock">
-    <label for="reef-light">Scene lighting</label>
+    <div class="fish-controls" role="group" aria-label="Animated fish">
+      <button type="button" id="fish-remove" aria-label="Remove the last fish" title="Remove the last fish"><i class="ico ico-minus" aria-hidden="true"></i></button>
+      <button type="button" id="fish-add" aria-haspopup="dialog" aria-controls="fish-picker"><i class="ico ico-plus" aria-hidden="true"></i> Add fish</button>
+      <output id="fish-count" aria-label="Animated fish count">10</output>
+    </div>
+    <div class="light-control"><label for="reef-light"><i class="ico ico-light" aria-hidden="true"></i> Lighting</label>
     <select id="reef-light">
       <option value="auto">Automatic</option><option value="dawn">Dawn</option>
       <option value="day">Day</option><option value="dusk">Dusk</option><option value="night">Night</option>
-    </select><span id="reef-period"></span>
-    <button id="reef-motion" aria-pressed="false" type="button">Pause motion</button>
-    <button id="reef-ripple" type="button">Ripple water</button>
+    </select><span id="reef-period"></span></div>
+    <button id="reef-motion" aria-pressed="false" type="button"><i class="ico ico-motion" aria-hidden="true"></i> <span>Pause motion</span></button>
+    <button id="reef-ripple" type="button"><i class="ico ico-ripple" aria-hidden="true"></i> Ripple water</button>
   </div>
 </section>
+<dialog id="fish-picker" aria-labelledby="fish-picker-title">
+  <header><h2 id="fish-picker-title">Choose a fish</h2>
+    <button type="button" id="fish-picker-close" aria-label="Close fish picker">×</button>
+  </header>
+  <div class="fish-quantity-row">
+    <label for="fish-quantity">Quantity</label>
+    <select id="fish-quantity" aria-describedby="fish-space"></select>
+    <span id="fish-space"></span>
+  </div>
+  <div class="fish-choices">
+    {% for species, label in [
+      ('tiger-barb', 'Tiger Barb'), ('glo-tetra', 'Pink Glo Tetra'),
+      ('glo-tetra-orange', 'Orange Glo Tetra'), ('glo-tetra-red', 'Red Glo Tetra'),
+      ('glo-tetra-green', 'Green Glo Tetra'), ('glo-tetra-blue', 'Blue Glo Tetra'),
+      ('clownfish', 'Clownfish'), ('blue-tang', 'Blue Tang'), ('yellow-tang', 'Yellow Tang')
+    ] %}
+    {% set sprite = 'glo-tetra' if species.startswith('glo-tetra-') else species %}
+    <button type="button" data-species="{{ species }}">
+      <img src="{{ url_for('static', filename='fish/' ~ sprite ~ '.webp') }}" alt="">
+      <span>{{ label }}</span><i class="ico ico-plus" aria-hidden="true"></i>
+    </button>
+    {% endfor %}
+  </div>
+</dialog>
 <section class="reef-equipment" aria-label="Equipment">
-  <a href="/feeding"><span>Feeding</span><strong id="feed-mode-val">—</strong></a>
-  <a href="/water-changes"><span>Water pumps</span><strong id="pump-mode-val">—</strong></a>
-  <a href="/cooling-fan"><span>Cooling fan</span><strong data-fan-status>—</strong></a>
+  <a href="/feeding"><span><i class="ico ico-feeding" aria-hidden="true"></i> Feeding</span><strong id="feed-mode-val">—</strong></a>
+  <a href="/water-changes"><span><i class="ico ico-water" aria-hidden="true"></i> Water pumps</span><strong id="pump-mode-val">—</strong></a>
+  <a href="/cooling-fan"><span><i class="ico ico-fan" aria-hidden="true"></i> Cooling fan</span><strong data-fan-status>—</strong></a>
 </section>
 <p id="quality-confirmation-status" class="confirmation-note" role="status" hidden></p>
                 <div class="smart-alert-panel">
@@ -71,4 +102,4 @@
                     </div>
                 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='aquarium.js') }}?v=4"></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='aquarium.js') }}?v=7"></script>{% endblock %}

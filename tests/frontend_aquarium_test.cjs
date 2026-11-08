@@ -50,7 +50,55 @@ function checkScene() {
     probe.querySelector('summary').click();
     assert(probe.open);
     assert.deepEqual(Array.from(probe.querySelectorAll('.probe-ends span'), el => el.textContent), ['Bright','Murky']);
-    assert.equal(doc.querySelectorAll('.reef-school img').length,3);
+    const school = doc.querySelector('.reef-school');
+    const add = doc.querySelector('#fish-add'), remove = doc.querySelector('#fish-remove');
+    const picker = doc.querySelector('#fish-picker');
+    picker.showModal = () => picker.setAttribute('open','');
+    picker.close = () => picker.removeAttribute('open');
+    const quantity = doc.querySelector('#fish-quantity');
+    function choose(id, count = 1) {
+        add.click();
+        assert(picker.open);
+        assert.equal(quantity.value,'1');
+        assert.equal(quantity.options.length,24 - school.childElementCount);
+        quantity.value = String(count);
+        picker.querySelector('[data-species="' + id + '"]').click();
+        assert(!picker.open);
+    }
+    assert.equal(school.childElementCount,10);
+    assert.equal(doc.querySelector('#fish-count').textContent, '10');
+    add.click();
+    doc.querySelector('#fish-picker-close').click();
+    assert.equal(school.childElementCount,10);
+    choose('tiger-barb',5);
+    assert.equal(school.childElementCount,15);
+    assert.equal(school.querySelectorAll('[data-species="tiger-barb"]').length,5);
+    assert.equal(school.lastElementChild.dataset.species,'tiger-barb');
+    choose('glo-tetra');
+    assert.equal(JSON.parse(w.localStorage.getItem('aquapi-scene-fish-roster')).at(-1),'glo-tetra');
+    remove.click();
+    assert.equal(school.lastElementChild.dataset.species,'tiger-barb');
+    for (const color of ['orange','red','green','blue']) {
+        const species = 'glo-tetra-' + color;
+        choose(species);
+        assert.equal(school.lastElementChild.dataset.species, species);
+        assert.equal(JSON.parse(w.localStorage.getItem('aquapi-scene-fish-roster')).at(-1), species);
+    }
+    choose('blue-tang',5);
+    assert.equal(school.childElementCount,24);
+    assert(add.disabled);
+    for (let i = 0; i < 30; i++) remove.click();
+    assert.equal(school.childElementCount,0);
+    assert(remove.disabled);
+    choose('glo-tetra');
+    assert(school.querySelector('img').src.endsWith('/glo-tetra.webp'));
+    assert.equal(school.querySelector('img').alt,'');
+    assert.equal(doc.querySelector('#fish-count').textContent,'1');
+    const panel = doc.querySelector('.reef-instruments');
+    panel.querySelector('summary').click();
+    assert(!panel.open);
+    panel.querySelector('summary').click();
+    assert(panel.open);
     assert.equal(probe.dataset.state,'warning');
     assert.equal(probe.querySelector('strong').textContent,'Murky');
     assert.equal(probe.querySelector('a').getAttribute('href'),'/graphs#turbidityChart');

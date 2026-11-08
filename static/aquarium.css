@@ -66,29 +66,93 @@
 .reef-ripple {position:absolute;pointer-events:none;z-index:-1;width:64px;height:26px;margin:-13px 0 0 -32px;border:2px solid #d9ffff;border-radius:50%;opacity:0}
 
 .reef-school {position:absolute;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
-.swim-lane {position:absolute;top:var(--depth);width:100%;animation:reef-cross var(--lap) ease-in-out infinite;animation-delay:var(--start)}
-.swim-lane:nth-child(1) {--depth:34%;--lap:31s;--start:-11s;--size:clamp(45px,5vw,82px)}
-.swim-lane:nth-child(2) {--depth:53%;--lap:43s;--start:-24s;--size:clamp(62px,7vw,112px)}
-.swim-lane:nth-child(3) {--depth:18%;--lap:37s;--start:-7s;--size:clamp(44px,5.3vw,90px)}
-.swim-turn {width:var(--size);animation:reef-turn var(--lap) linear infinite;animation-delay:var(--start)}
-.swim-turn img {display:block;width:100%;height:auto;animation:reef-glide 4s ease-in-out infinite alternate}
-.swim-lane:nth-child(2) img {animation-delay:-2s}
-.swim-lane:nth-child(3) img {animation-delay:-1s}
-@keyframes reef-cross {0%,100%{transform:translateX(6%)}50%{transform:translateX(84%)}}
+.swim-lane {position:absolute;left:0;top:var(--depth,35%);width:clamp(42px,var(--size,6vw),112px);animation:reef-cross var(--lap,37s) ease-in-out infinite;animation-delay:var(--start,-7s)}
+.swim-turn {animation:reef-turn var(--lap,37s) linear infinite;animation-delay:var(--start,-7s)}
+.swim-turn img {display:block;width:100%;height:auto}
+@keyframes reef-cross {
+    0%,100% {transform:translate(8px,-4px) rotate(-2deg)}
+    25%,75% {transform:translate(calc(50vw - 50%),8px) rotate(1deg)}
+    50% {transform:translate(calc(100vw - 100% - 12px),-4px) rotate(-2deg)}
+}
 @keyframes reef-turn {0%,48%,100%{transform:scaleX(1)}51%,96%{transform:scaleX(-1)}}
-@keyframes reef-glide {from{transform:translateY(-4px) rotate(-2deg)}to{transform:translateY(5px) rotate(2deg)}}
 .reef[data-light="night"] .reef-school {opacity:.53}
 .reef[data-light="dusk"] .reef-school {opacity:.8}
 .reef[data-paused="true"] :is(.swim-lane,.swim-turn,.swim-turn img) {animation-play-state:paused}
 @media (prefers-reduced-motion:reduce) {
     .reef-school :is(.swim-lane,.swim-turn,.swim-turn img) {animation-play-state:paused}
 }
-@media (max-width:600px) {
-    .reef {grid-template-rows:auto minmax(132px,18vh) auto}
-    .reef-instruments {grid-area:1/1}
-    .reef-school {position:relative;inset:auto;grid-area:2/1}
-    .reef-dock {grid-area:3/1}
-    .swim-lane:nth-child(3) {--depth:1%}
-    @keyframes reef-cross-mobile {0%,100%{transform:translateX(0)}50%{transform:translateX(76%)}}
-    .swim-lane {animation-name:reef-cross-mobile}
+
+body[data-page="index"] {padding:0;--reef-header:64px}
+body[data-page="index"] .app-shell {width:100%;max-width:none;gap:0}
+body[data-page="index"] .page-index {gap:0;min-width:0}
+body[data-page="index"] .app-header {height:var(--reef-header);margin:0;padding-inline:clamp(10px,2vw,30px)}
+@media(min-width:1200px) {
+    body[data-page="index"] .app-shell {grid-template-rows:var(--reef-header) auto}
+    body[data-page="index"] .app-brand {margin-inline:20px}
+    body[data-page="index"] .access-link {margin-inline:16px}
+    body[data-page="index"] .app-nav {justify-self:center}
 }
+.page-index .reef {display:flex;flex-direction:column;justify-content:space-between;gap:12px;align-items:flex-start;
+    box-sizing:border-box;width:100%;height:calc(100vh - var(--reef-header));height:calc(100dvh - var(--reef-header));
+    min-height:270px;border:0;border-radius:0;padding:clamp(10px,1.3vw,24px);background-position:center}
+.reef-instruments {width:min(354px,100%);min-height:0;overflow:auto;overscroll-behavior:contain;max-width:100%}
+.reef-panel-head {list-style:none;cursor:pointer;justify-content:flex-start;gap:8px;min-height:44px}
+.reef-panel-head::-webkit-details-marker {display:none}
+.reef-panel-head .ico,.probe-label .ico,.reef-dock .ico,.reef-equipment .ico {color:var(--accent)}
+.probe-label .ico {color:var(--ink);font-family:AquaIcons;font-weight:normal;font-size:14px}
+.panel-heading {flex:1}
+#reef-title {display:block;font-size:17px}
+.reef-clock {display:block}
+.closed-caption {display:none}
+.reef-instruments[open] .ico-chevron {transform:rotate(180deg)}
+.reef-instruments:not([open]) {width:auto;flex:none}
+.reef-instruments:not([open]) .reef-panel-head {border:0;padding:8px 12px}
+.reef-instruments:not([open]) :is(#reef-title,.reef-clock,#reef-signal) {display:none}
+.reef-instruments:not([open]) .closed-caption {display:inline;font-weight:650}
+.reef-dock {flex:none;align-self:center;justify-content:center;max-width:100%;gap:7px;
+    margin-bottom:env(safe-area-inset-bottom,0px);padding:6px}
+.reef-dock button,.reef-dock select,.reef-dock #reef-ripple {min-height:40px;margin:0;border:1px solid var(--line);border-radius:7px;background:var(--raised);color:var(--header-text);padding:6px 9px;font:inherit;cursor:pointer}
+.reef-dock button:disabled {opacity:.5;cursor:default}
+.fish-controls,.light-control {display:inline-flex;align-items:center;gap:5px}
+.reef-dock #fish-add {background:var(--accent);color:#071c2d;font-weight:700}
+#fish-add .ico {color:inherit}
+#fish-count {min-width:2ch;text-align:center;font:600 13px ui-monospace,monospace}
+.reef-equipment,.page-index .smart-alert-panel,.page-index > .confirmation-note {margin:14px clamp(10px,2vw,30px)}
+.page-index .smart-alert-panel {margin-top:0}
+@media(max-width:700px) {
+    body[data-page="index"] {--reef-header:58px}
+    body[data-page="index"] .app-nav.menu-open {top:var(--reef-header)}
+    .page-index .reef {padding:10px;gap:8px}
+    .reef-instruments {width:min(420px,100%)}
+    .reef-panel-head {padding:10px 12px}
+    .reef-dock {gap:5px;display:grid;grid-template-columns:auto auto;justify-items:stretch;font-size:12px}
+    .fish-controls,.light-control {justify-content:center}
+    .reef-dock #reef-period {display:none}
+    .reef-dock button,.reef-dock select,.reef-dock #reef-ripple,.reef-dock #reef-motion {min-height:44px;padding:5px 8px}
+    .light-control label {font-size:0}
+    .light-control label .ico {font-size:16px}
+}
+
+#fish-picker {box-sizing:border-box;width:min(360px,calc(100% - 24px));max-height:calc(100% - 24px);overflow:auto;
+    margin:auto;padding:16px;border:1px solid var(--line);border-radius:14px;color:var(--header-text);background:var(--card)}
+#fish-picker::backdrop {background:#030b16a8}
+#fish-picker header,.fish-choices button {display:flex;align-items:center;gap:12px}
+#fish-picker header {justify-content:space-between;margin-bottom:8px}
+#fish-picker h2 {margin:0;font-size:18px}
+#fish-picker button {font:inherit;color:inherit;background:var(--raised);border:1px solid var(--line);border-radius:8px;cursor:pointer}
+#fish-picker-close {min-width:44px;min-height:44px}
+.fish-quantity-row {display:flex;align-items:center;gap:10px;margin:4px 0 12px}
+.fish-quantity-row label {font-weight:600}
+#fish-quantity {width:4.5em;min-height:44px;margin:0;padding:4px 8px;color:var(--header-text);
+    background:var(--raised);border:1px solid var(--line);border-radius:8px;font:inherit}
+#fish-space {margin-left:auto;font-size:12px;color:var(--text)}
+.fish-choices {display:grid;gap:6px}
+.fish-choices button {padding:6px 12px;min-height:46px;text-align:left}
+.fish-choices button:hover,.fish-choices button:focus-visible {border-color:var(--accent)}
+.fish-choices img {width:54px;height:32px;object-fit:contain}
+.fish-choices .ico {margin-left:auto;color:var(--accent)}
+
+[data-species="glo-tetra-orange"] img {filter:hue-rotate(65deg) brightness(1.25) saturate(1.12)}
+[data-species="glo-tetra-red"] img {filter:hue-rotate(30deg) saturate(1.35)}
+[data-species="glo-tetra-green"] img {filter:hue-rotate(135deg) brightness(1.3)}
+[data-species="glo-tetra-blue"] img {filter:hue-rotate(250deg) brightness(1.1)}

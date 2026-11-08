@@ -4,23 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AquaPi · {{ title }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=35">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=36">
+  <link rel="stylesheet" href="{{ url_for('static', filename='icons/icons.css') }}">
   {% block head %}{% endblock %}
 </head>
 <body class="audience-mode" data-page="{{ page }}">
 <div class="dashboard app-shell">
   <header class="app-header">
-    <a class="app-brand" href="/" aria-label="AquaPi home"><span class="brand-mark" aria-hidden="true">≈</span>AquaPi</a>
+    <button id="nav-toggle" type="button" aria-label="Navigation menu" aria-controls="main-nav" aria-expanded="false"><span class="ico ico-menu" aria-hidden="true"></span></button>
+    <a class="app-brand" href="/" aria-label="AquaPi home"><span class="brand-mark" aria-hidden="true"><i class="ico ico-wave"></i></span>AquaPi</a>
     <a id="role-text" class="access-link" href="/access">Viewer · Sign in</a>
   </header>
-  <nav class="app-nav" aria-label="Main navigation">
+  <nav id="main-nav" class="app-nav" aria-label="Main navigation">
   {% for key, label, path in [('index','Overview','/'),('feeding','Feeding','/feeding'),('water','Water Changes','/water-changes'),('fan','Cooling Fan','/cooling-fan'),('camera','Camera','/camera'),('graphs','Graphs','/graphs'),('settings','System settings','/settings')] %}
-    <a href="{{ path }}" {% if page == key %}aria-current="page"{% endif %}>{{ label }}</a>
+    <a href="{{ path }}" {% if page == key %}aria-current="page"{% endif %}><i class="ico ico-{{ key }}" aria-hidden="true"></i> {{ label }}</a>
   {% endfor %}
-  {% if developer_visible %}<a id="developer-nav" href="/developer" {% if page == 'developer' %}aria-current="page"{% endif %}>Developer option</a>{% endif %}
+  {% if developer_visible %}<a id="developer-nav" href="/developer" {% if page == 'developer' %}aria-current="page"{% endif %}><i class="ico ico-developer" aria-hidden="true"></i> Developer option</a>{% endif %}
   </nav>
   <main id="main-content" class="page-content page-{{ page }}">
-    <div class="page-heading"><h1>{{ title }}</h1></div>
+    <div class="page-heading"><h1><i class="ico ico-{{ page }}" aria-hidden="true"></i> {{ title }}</h1></div>
     {% if page in ['feeding','water','fan','camera','settings'] %}
     <p class="access-note" data-admin-hint><a href="/access">Sign in</a> to use controls.</p>
     {% endif %}
@@ -28,7 +30,7 @@
     {% block content %}{% endblock %}
   </main>
 </div>
-<script src="{{ url_for('static', filename='script.js') }}?v=37"></script>
+<script src="{{ url_for('static', filename='script.js') }}?v=38"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

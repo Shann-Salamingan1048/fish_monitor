@@ -1457,19 +1457,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
     .custom-feeder { padding: 14px; }
 }
 /* Decorative symbols supplied locally; button labels carry their meaning. */
-i.fas { font-style: normal; }
-i.fas::before { content: '•'; }
-i.fa-heart::before { content: '♥'; }
-i.fa-fish::before { content: '◈'; }
-i.fa-clock::before { content: '◷'; }
-i.fa-plus::before { content: '+'; }
-i.fa-water::before, i.fa-tint::before { content: '≈'; }
-i.fa-triangle-exclamation::before, i.fa-circle-exclamation::before { content: '!'; }
-i.fa-circle-check::before { content: '✓'; }
-i.fa-circle-info::before { content: 'i'; }
-i.fa-chart-line::before { content: '↗'; }
-i.fa-chevron-right::before { content: '›'; }
-i.fa-camera::before { content: '▣'; }
+
 
 /* Shared sensor controls; fixed rows preserve keyboard focus during polling. */
 .sensor-controls { margin: 16px 0; padding: 20px; }
@@ -1669,4 +1657,17 @@ input,select,textarea {color-scheme:dark;accent-color:var(--accent)}
     .app-nav a {padding:12px 8px;font-size:.88rem}
     .access-link {grid-area:1/3}
     .page-content {grid-column:1/-1;min-width:0}
+}
+
+#nav-toggle {display:none}
+.app-nav .ico,.page-heading .ico {color:var(--accent);margin-inline-end:.25em}
+.page-heading .ico {font-size:.82em}
+.brand-mark .ico {font-size:22px}
+@media(max-width:1199px) {
+    .nav-ready #nav-toggle {display:inline-grid;place-items:center;background:var(--card);border:1px solid var(--line);color:var(--header-text);width:44px;height:44px;border-radius:10px;font-size:21px;cursor:pointer}
+    .nav-ready .app-header {display:flex;flex-direction:row;align-items:center;justify-content:flex-start;flex-wrap:nowrap;gap:10px}
+    .nav-ready .app-header .access-link {margin-left:auto;white-space:nowrap}
+    .nav-ready .app-nav {display:none}
+    .nav-ready .app-nav.menu-open {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));position:absolute;left:8px;right:8px;top:64px;z-index:20;box-shadow:0 12px 26px #02071099}
+    .nav-ready .app-nav a {text-align:left}
 }

@@ -11,6 +11,101 @@
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
     function read(key) { try { return localStorage.getItem(key); } catch { return null; } }
     function save(key, value) { try { localStorage.setItem(key, value); } catch {} }
+    const panel = reef.querySelector('.reef-instruments');
+    const panelPreference = read('aquapi-scene-panel');
+    panel.open = panelPreference === null ? window.innerWidth > 700 : panelPreference === 'open';
+    panel.addEventListener('toggle', () => save('aquapi-scene-panel', panel.open ? 'open' : 'closed'));
+
+    const school = reef.querySelector('.reef-school');
+    const laneTemplate = school.firstElementChild.cloneNode(true);
+    const defaultSpecies = Array.from(school.children).slice(0, 3).map(lane => lane.dataset.species);
+    const picker = document.getElementById('fish-picker');
+    const speciesImages = new Map(Array.from(picker.querySelectorAll('[data-species]'), choice =>
+        [choice.dataset.species, choice.querySelector('img').src]));
+    const addFish = document.getElementById('fish-add');
+    const removeFish = document.getElementById('fish-remove');
+    const fishCount = document.getElementById('fish-count');
+    const quantity = document.getElementById('fish-quantity');
+    const space = document.getElementById('fish-space');
+    const maximumFish = 24;
+    function positionFish(lane, index) {
+        const seconds = 31 + (index * 7) % 24;
+        lane.style.setProperty('--depth', (8 + (index * 23) % 72) + '%');
+        lane.style.setProperty('--lap', seconds + 's');
+        lane.style.setProperty('--start', -seconds * ((.28 + index * .618) % 1) + 's');
+        lane.style.setProperty('--size', (4.2 + (index * 1.3) % 3.8).toFixed(1) + 'vw');
+    }
+    function applySpecies(lane, species) {
+        if (lane.dataset.species !== species) {
+            lane.dataset.species = species;
+            lane.querySelector('img').src = speciesImages.get(species);
+        }
+    }
+    function appendFish(species) {
+        const lane = laneTemplate.cloneNode(true);
+        applySpecies(lane, species);
+        positionFish(lane, school.childElementCount);
+        school.append(lane);
+    }
+    function updateFishControls() {
+        const count = school.childElementCount;
+        fishCount.textContent = String(count);
+        addFish.disabled = count >= maximumFish;
+        removeFish.disabled = count === 0;
+    }
+    function restoreSchool() {
+        let roster;
+        try { roster = JSON.parse(read('aquapi-scene-fish-roster')); } catch {}
+        if (!Array.isArray(roster) || roster.length > maximumFish || !roster.every(id => speciesImages.has(id))) {
+            const previous = read('aquapi-scene-fish-count');
+            const n = previous === null ? 10 : Number(previous);
+            const count = Number.isInteger(n) && n >= 0 && n <= maximumFish ? n : 10;
+            roster = Array.from({length: count}, (_, i) => defaultSpecies[i % defaultSpecies.length]);
+        }
+        while (school.childElementCount > roster.length) school.lastElementChild.remove();
+        roster.forEach((species, index) => {
+            const lane = school.children[index];
+            if (lane) {
+                applySpecies(lane, species);
+                positionFish(lane, index);
+            } else appendFish(species);
+        });
+        updateFishControls();
+    }
+    function saveSchool() {
+        save('aquapi-scene-fish-roster', JSON.stringify(Array.from(school.children, lane => lane.dataset.species)));
+        updateFishControls();
+    }
+    restoreSchool();
+    addFish.addEventListener('click', () => {
+        const remaining = maximumFish - school.childElementCount;
+        quantity.replaceChildren();
+        for (let n = 1; n <= remaining; n++) quantity.add(new Option(String(n), String(n)));
+        space.textContent = remaining === 1 ? '1 space left' : remaining + ' spaces left';
+        picker.showModal();
+    });
+    document.getElementById('fish-picker-close').addEventListener('click', () => picker.close());
+    picker.addEventListener('click', event => {
+        const choice = event.target.closest('button[data-species]');
+        const count = Number(quantity.value);
+        if (choice && Number.isInteger(count) && count >= 1 && count <= maximumFish - school.childElementCount) {
+            for (let i = 0; i < count; i++) appendFish(choice.dataset.species);
+            picker.close();
+            saveSchool();
+            if (addFish.disabled) removeFish.focus();
+        }
+    });
+    removeFish.addEventListener('click', () => {
+        if (school.lastElementChild) school.lastElementChild.remove();
+        saveSchool();
+    });
+    let inView = true;
+    if ('IntersectionObserver' in window) {
+        new IntersectionObserver(([entry]) => {
+            inView = entry.isIntersecting;
+            updateMotion();
+        }).observe(reef);
+    }
     const savedLight = read('aquapi-scene-light');
     if (Array.from(light.options).some(option => option.value === savedLight)) light.value = savedLight;
     let paused = read('aquapi-scene-paused') === 'yes';
@@ -23,19 +118,21 @@
         document.getElementById('time-val').textContent = time;
     }
     function updateMotion() {
-        reef.dataset.paused = String(paused || reduced.matches || document.hidden);
+        reef.dataset.paused = String(paused || reduced.matches || document.hidden || !inView);
         rippleButton.disabled = paused || reduced.matches;
         if (reef.dataset.paused === 'true' && ripple) ripple.cancel();
         motion.disabled = reduced.matches;
-        motion.textContent = reduced.matches ? 'Motion off' : paused ? 'Resume motion' : 'Pause motion';
-        motion.setAttribute('aria-label', motion.textContent);
+        const caption = reduced.matches ? 'Motion off' : paused ? 'Resume motion' : 'Pause motion';
+        motion.querySelector('span').textContent = caption;
+        motion.querySelector('i').className = 'ico ' + (paused ? 'ico-play' : 'ico-motion');
+        motion.setAttribute('aria-label', caption);
         motion.setAttribute('aria-pressed', String(paused || reduced.matches));
     }
     reef.addEventListener('click', event => {
         const target = event.target;
-        if (reef.dataset.paused === 'true' || (target !== rippleButton && target.closest('.reef-top, .reef-dock, .reef-instruments'))) return;
+        const fromButton = rippleButton.contains(target);
+        if (reef.dataset.paused === 'true' || (!fromButton && target.closest('.reef-top, .reef-dock, .reef-instruments'))) return;
         const rect = reef.getBoundingClientRect();
-        const fromButton = target === rippleButton;
         ring.style.left = (fromButton ? rect.width * .67 : event.clientX - rect.left) + 'px';
         ring.style.top = (fromButton ? rect.height * .45 : event.clientY - rect.top) + 'px';
         if (ripple) ripple.cancel();

@@ -685,7 +685,7 @@ function loadAuthStatus(fillForm = true) {
             setRoleUI(data.role, data.servo);
             if (data.developerOptions && data.role === 'admin' && !document.getElementById('developer-nav')) {
                 const link = document.createElement('a'); link.id = 'developer-nav';
-                link.href = '/developer'; link.textContent = 'Developer option';
+                link.href = '/developer'; link.innerHTML = '<i class="ico ico-developer" aria-hidden="true"></i> Developer option';
                 document.querySelector('.app-nav')?.append(link);
             }
             renderAdminSessions(data.adminSessions);
@@ -1423,3 +1423,24 @@ async function setFanMode(mode) {
         if (message) message.textContent = err.message;
     } finally { fanRequestRunning = false; renderFan(fanState); }
 }
+
+(() => {
+    const button = document.getElementById('nav-toggle');
+    const nav = document.getElementById('main-nav');
+    if (!button || !nav) return;
+    document.body.classList.add('nav-ready');
+    function toggle(open) {
+        button.setAttribute('aria-expanded', String(open));
+        nav.classList.toggle('menu-open', open);
+    }
+    button.addEventListener('click', () => toggle(button.getAttribute('aria-expanded') === 'false'));
+    document.addEventListener('click', event => {
+        if (!nav.contains(event.target) && !button.contains(event.target)) toggle(false);
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && button.getAttribute('aria-expanded') === 'true') {
+            toggle(false);
+            button.focus();
+        }
+    });
+})();

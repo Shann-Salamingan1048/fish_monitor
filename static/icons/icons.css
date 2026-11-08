@@ -1,0 +1,42 @@
+@font-face {font-family:AquaIcons;src:url('aquapi.woff') format('woff');font-display:swap}
+.ico, i.fas {display:inline-block;font:normal 1em/1 AquaIcons;speak:none;text-rendering:auto;flex:none}
+.ico {vertical-align:-.12em}
+.ico-index::before {content:"\f3f4"}
+.ico-feeding::before, i.fa-calendar-check::before {content:"\f1e2"}
+.ico-water::before {content:"\f127"}
+.ico-fan::before {content:"\f670"}
+.ico-camera::before, i.fa-camera::before {content:"\f21f"}
+.ico-graphs::before, i.fa-chart-line::before {content:"\f3f2"}
+.ico-settings::before, i.fa-sliders::before {content:"\f56b"}
+.ico-access::before {content:"\f8a8"}
+.ico-developer::before {content:"\f5db"}
+.ico-temp::before, i.fa-thermometer-half::before {content:"\f5cd"}
+.ico-ph::before, i.fa-vial::before {content:"\f342"}
+.ico-level::before, .ico-ripple::before, .ico-wave::before, i.fa-water::before, i.fa-fish::before {content:"\f617"}
+.ico-clarity::before {content:"\f30c"}
+.ico-probes::before {content:"\f1d6"}
+.ico-light::before {content:"\f5a2"}
+.ico-motion::before {content:"\f4c2"}
+.ico-play::before {content:"\f4f3"}
+.ico-plus::before, i.fa-plus::before {content:"\f64d"}
+.ico-minus::before {content:"\f63b"}
+.ico-menu::before {content:"\f479"}
+.ico-chevron::before {content:"\f282"}
+.ico-clock::before, i.fa-clock::before {content:"\f293"}
+.ico-bell::before, i.fa-bell::before {content:"\f18a"}
+i.fa-temperature-high::before {content:"\f5ce"}
+i.fa-arrow-up-from-water-pump::before {content:"\f1c6"}
+i.fa-faucet-drip::before, i.fa-tint::before {content:"\f30d"}
+i.fa-eye::before {content:"\f341"}
+i.fa-heart::before {content:"\f76f"}
+i.fa-circle-info::before {content:"\f431"}
+i.fa-rotate::before {content:"\f130"}
+i.fa-stop::before {content:"\f592"}
+i.fa-gauge-high::before {content:"\f580"}
+i.fa-spinner::before {content:"\f116"}
+i.fa-circle-check::before {content:"\f26b"}
+i.fa-circle-exclamation::before {content:"\f333"}
+i.fa-triangle-exclamation::before {content:"\f33b"}
+i.fa-calendar-plus::before {content:"\f1ef"}
+i.fa-save::before {content:"\f7d8"}
+i.fa-chevron-right::before {content:"\f285"}
