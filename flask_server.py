@@ -402,12 +402,7 @@ def sensors():
         clarity = calibration.clarity_readout(sensor_snapshot.get("turbidity"))
         clarity_labels = calibration.clarity_labels()
         category = calibration.category_for_label(clarity) if clarity in clarity_labels else None
-        history_snapshot = {
-            key: list(values)
-            for key, values in sensor_history.items()
-        }
-
-        alerts = build_sensor_alerts(sensor_snapshot, history_snapshot)
+        alerts = build_sensor_alerts(sensor_snapshot, sensor_history)
         controls = sensor_control.get_status()
         water_status = water_control.get_status()
 

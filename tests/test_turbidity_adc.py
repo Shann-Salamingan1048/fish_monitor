@@ -15,11 +15,11 @@ def receive(adc='500', category='Clear', revision=None):
     return MCUCommunicator()._parse_sensor_message(packet)[0]
 
 
-@pytest.mark.parametrize('adc', [0, 500, 1023])
-def test_raw_adc_reaches_api_without_changing_category(adc):
+@pytest.mark.parametrize('adc,label', [(0,'Very Cloudy'), (399,'Very Cloudy'), (400,'Cloudy'), (599,'Cloudy'), (600,'Clear'), (1023,'Clear')])
+def test_raw_adc_reaches_api_with_default_category(adc, label):
     snapshot = receive(str(adc))
     assert snapshot['turbidity_adc'] == adc
-    assert snapshot['turbidity'] == 'Clear'
+    assert snapshot['turbidity'] == label
     assert flask_app.test_client().get('/api/sensors').json['turbidity_adc'] == adc
 
 

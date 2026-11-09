@@ -148,9 +148,9 @@ def test_admin_access_mode_save_and_cross_site_denial(monkeypatch):
 
 
 
-def test_default_fallback_unchanged_until_saved():
+def test_default_profile_uses_three_buffers():
     assert packet(ph='7.42',pa='900',clarity='Cloudy')[0]['ph'] == '7.42'
-    assert calibration.status()['profile'] == {'ph':None,'turbidity':None}
+    assert calibration.status()['profile'] == {'ph':calibration.DEFAULT_PH,'turbidity':None}
 
 
 def test_failed_database_save_does_not_install_calibration(monkeypatch):
@@ -159,16 +159,13 @@ def test_failed_database_save_does_not_install_calibration(monkeypatch):
     def fail(): raise sqlite3.OperationalError('disk full')
     monkeypatch.setattr(config, 'db_connect', fail)
     with pytest.raises(sqlite3.OperationalError): calibration.save(PROFILE)
-    assert calibration.status()['profile'] == {'ph':None, 'turbidity':None}
+    assert calibration.status()['profile'] == {'ph':calibration.DEFAULT_PH, 'turbidity':None}
     with pytest.raises(sqlite3.OperationalError): calibration.set_active(False)
     assert calibration.active()
 
 
-def test_default_range_boundaries_match_firmware():
-    # Mega computes clarity = ADC / 1023 * 3000, then categorical cutoffs.
+def test_default_range_boundaries_on_pi():
     rows = calibration.DEFAULT_RANGES
     for adc in range(1024):
-        score = adc / 1023 * 3000
-        expected = ('Very Cloudy' if score < 500 else 'Cloudy' if score < 1200 else
-                    'Slightly Cloudy' if score < 2200 else 'Clear' if score < 2800 else 'Very Clear')
+        expected = 'Very Cloudy' if adc < 400 else 'Cloudy' if adc < 600 else 'Clear'
         assert next(row['category'] for row in rows if row['min'] <= adc <= row['max']) == expected

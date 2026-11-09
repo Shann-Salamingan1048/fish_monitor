@@ -231,8 +231,7 @@ class MCUCommunicator:
                                          None if calibration.active() else sensor_data['ph'],
                                          turbidity_adc=None if calibration.active() else sensor_data['turbidity_adc'])
             snapshot = sensor_data.copy()
-            history = {key: list(values) for key, values in sensor_history.items()}
-            alerts = build_sensor_alerts(snapshot, history)
+            alerts = build_sensor_alerts(snapshot, sensor_history)
         if self.app_callback:
             try:
                 self.app_callback(snapshot['temp'], snapshot['float_stat'], snapshot['turbidity'], snapshot['ph'], alerts)
@@ -477,17 +476,8 @@ class MCUCommunicator:
 
     def get_alerts(self):
         with config.sensor_lock:
-            sensor_snapshot = sensor_data.copy()
+            return build_sensor_alerts(sensor_data, sensor_history)
 
-            history_snapshot = {
-                key: list(values)
-                for key, values in sensor_history.items()
-            }
-
-        return build_sensor_alerts(
-            sensor_snapshot,
-            history_snapshot,
-        )
 
 
 _default_communicator = None

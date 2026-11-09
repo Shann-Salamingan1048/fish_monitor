@@ -13,11 +13,10 @@ def build_snapshot():
         version = config.settings_version
         readings = config.sensor_data.copy()
         clarity = calibration.clarity_readout(readings.get("turbidity"))
-        history = {key: list(values) for key, values in config.sensor_history.items()}
+        alerts = build_sensor_alerts(readings, config.sensor_history)
         controls = sensor_control.get_status()
         import water_control
         controls["waterControl"] = water_control.get_status()
-    alerts = build_sensor_alerts(readings, history)
     readings["turbidity"] = clarity
     return version, readings, controls, alerts
 

@@ -1,6 +1,10 @@
 # AquaPi control and calibration validation
 
-## Current update
+## Boot, defaults and forecast update
+
+The updated Python suite covers forecast replacement across sensors, retention of critical alerts, daily defaults after restarts and deletions, ADC cutoffs and saturation of the 5 V estimate. All six combined-Mega simulations and all four browser DOM suites passed. The generated service passed `systemd-analyze verify`. Two headless launches with the packaged database served the dashboard API, loaded the requested limits and schedules, and shut down on SIGTERM. Hardware boot, actual NTU accuracy, pump flow, and Pi frame times require the installed aquarium.
+
+## Previous calibration update
 
 - 268 Python tests passed. Coverage includes 2/3-point calibration persistence, input validation and Admin API access; temperature display/alerts during pumping; feeding postponement beyond 30 minutes and explicit not-started hardware conflicts; existing schedule, serial reconnect and security regressions.
 - Six C++ simulations passed using the actual combined `.ino`: core firmware, automatic policy, scheduled water changes, turbidity and the control/calibration cases and all two-point buffer pairs.

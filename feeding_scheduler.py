@@ -103,9 +103,11 @@ def process_due_feeding_schedules(local_now=None):
 
     # A schedule is claimed while it is inside its normal grace window. Once
     # claimed, it stays pending in SQLite until the water operation finishes.
-    newly_due = config.claim_due_feeding_schedules(now)
+    config.claim_due_feeding_schedules(now)
     pending = config.get_pending_feeding_schedules()
 
+    if not pending:
+        return []
     status = feeding_control.get_status()
     # Paused occurrences are intentionally skipped, never queued for a later burst.
     if status['paused']:

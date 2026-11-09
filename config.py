@@ -40,8 +40,8 @@ FEEDING_GRACE_SECONDS = max(
 )
 
 # Sensor and alert configuration
-TEMP_LIMIT_C = 30.0
-TEMP_OVERHEAT_LIMIT_C = 35.0
+TEMP_LIMIT_C = 29.0
+TEMP_OVERHEAT_LIMIT_C = 32.0
 TURBIDITY_LIMIT_NTU = 300.0
 TURBIDITY_CRITICAL_NTU = 600.0
 SIMULATE_SENSORS = False
@@ -51,9 +51,9 @@ QUALITY_CONFIRM_SECONDS = 5.0
 QUALITY_MAX_PACKET_GAP_SECONDS = 3.0
 
 PH_LOW_LIMIT = 6.5
-PH_HIGH_LIMIT = 8.5
+PH_HIGH_LIMIT = 8.0
 PH_CRITICAL_LOW_LIMIT = 6.0
-PH_CRITICAL_HIGH_LIMIT = 9.0
+PH_CRITICAL_HIGH_LIMIT = 8.5
 PREDICTION_DELAY_SECONDS = 30.0
 PREDICTION_ALERT_DURATION_SECONDS = 30.0
 TREND_WINDOW_SECONDS = PREDICTION_DELAY_SECONDS
@@ -198,6 +198,27 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT, cycles INTEGER NOT NULL,
             source TEXT NOT NULL, schedule_id INTEGER, trigger_date TEXT,
             status TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL)""")
+        # Install factory defaults once per database, in the schema transaction.
+        installed = conn.execute("SELECT 1 FROM app_state WHERE key='tank_defaults_v2'").fetchone()
+        if not installed:
+            now = time.time()
+            if not conn.execute("SELECT 1 FROM feeding_schedules LIMIT 1").fetchone():
+                conn.executemany(
+                    "INSERT INTO feeding_schedules(day_of_week, feed_time, cycles, created_at, updated_at) "
+                    "VALUES (?, ?, 3, ?, ?)",
+                    [(EVERY_DAY, feed_time, now, now) for feed_time in ('07:00', '19:00')])
+            # Upgrade only complete sets that exactly match the old factory values.
+            for old, new in [
+                ({'limit_temp': 30, 'limit_temp_critical': 35},
+                 {'limit_temp': 29, 'limit_temp_critical': 32}),
+                ({'limit_ph_low': 6.5, 'limit_ph_high': 8.5, 'limit_ph_critical_low': 6,
+                  'limit_ph_critical_high': 9}, {'limit_ph_high': 8, 'limit_ph_critical_high': 8.5}),
+            ]:
+                if all(conn.execute("SELECT 1 FROM app_state WHERE key=? AND CAST(value AS REAL)=?",
+                                    (key, value)).fetchone() for key, value in old.items()):
+                    conn.executemany("UPDATE app_state SET value=?, updated_at=? WHERE key=?",
+                                     [(str(value), now, key) for key, value in new.items()])
+            conn.execute("INSERT INTO app_state VALUES ('tank_defaults_v2', '1', ?)", (now,))
         import water_schedule
         water_schedule.create_tables(conn)
         conn.commit()
@@ -495,6 +516,7 @@ def set_db_value(key, value):
                 ON CONFLICT(key) DO UPDATE SET
                     value = excluded.value,
                     updated_at = excluded.updated_at
+                WHERE app_state.value <> excluded.value
                 """,
                 (key, str(value), time.time())
             )

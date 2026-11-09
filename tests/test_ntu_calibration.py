@@ -47,19 +47,21 @@ def test_uncalibrated_outside_and_stale_readings(clock):
     calibration.set_active(False)
     packet(ta='900')
     live = calibration.status()['live']
-    assert live['turbidityNTUState'] == 'illustrative'
-    assert live['illustrativeNTU'] == pytest.approx(120.2346, abs=.0001)
+    assert live['turbidityNTUState'] == 'estimated'
+    assert live['estimatedNTU'] == 0 and live['estimateState'] == 'clear_limit'
+    packet(ta='700')
+    assert calibration.status()['live']['estimatedNTU'] == pytest.approx(2178.60094)
     install()
     for adc, label in [(0,'Critical custom'),(1023,'Clear custom')]:
         assert packet(ta=str(adc))[0]['turbidity']==label
         live=calibration.status()['live']
         assert live['turbidityADC']==adc and live['turbidityNTU'] is None
         assert live['turbidityNTUState']=='out_of_range'
-        assert live['illustrativeNTU'] == pytest.approx((1023-adc)*1000/1023)
+        assert live['estimatedNTU'] == (3000 if adc == 0 else 0)
     packet(ta='700');clock[0]+=4
     live=calibration.status()['live']
     assert live['turbidityADC'] is None and live['turbidityNTU'] is None
-    assert live['illustrativeNTU'] is None
+    assert live['estimatedNTU'] is None
     sensor_control.input_reconnected()
     assert calibration.status()['live']['turbidityNTUState']=='unavailable'
 
@@ -137,7 +139,7 @@ def test_calibration_only_ntu_and_dashboard_categories(clock):
     packet(ta='770')
     check('Clear')
     packet(ta='1023', clarity='Very Clear')
-    check('Very Clear')
+    check('Clear')
     install()
     packet(ta='700')
     check('Warning custom', 100)

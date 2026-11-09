@@ -1,5 +1,6 @@
 """Backend sensor alerts and improved trend-prediction calculations."""
 
+from functools import lru_cache
 import math
 import re
 import statistics
@@ -289,16 +290,22 @@ def _fit_trend(history, key):
         float(config.TREND_WINDOW_SECONDS),
     )
 
-    samples = [
-        sample
-        for sample in history.get(key, [])
-        if now - sample[0] <= trend_window + 5.0
-    ]
+    # Use immutable samples so concurrent clients can reuse a fit. Window
+    # membership is checked each time, including when telemetry stops.
+    samples = []
+    for sample in reversed(history.get(key, ())):
+        if now - sample[0] > trend_window + 5.0:
+            break
+        samples.append(sample)
+    samples.reverse()
+    return _fit_window(tuple(samples), trend_window, config.MIN_RISE_PER_SECOND.get(key, 0.0),
+                       config.NOISE_TOLERANCE.get(key, 0.0),
+                       0.45 if key in {"turbidity", "turbidity_adc"} else 0.55)
 
-    # With the default 3-second sampling interval this requires several
-    # readings instead of trusting only a few points.
+
+@lru_cache(maxsize=12)
+def _fit_window(samples, trend_window, minimum_slope, tolerance, minimum_r_squared):
     minimum_samples = 6
-
     if len(samples) < minimum_samples:
         return None
 
@@ -322,17 +329,11 @@ def _fit_trend(history, key):
     direction = 1 if slope > 0 else -1
     directional_slope = abs(slope)
 
-    minimum_slope = config.MIN_RISE_PER_SECOND.get(key, 0.0)
-
     if directional_slope < minimum_slope:
         return None
 
-    minimum_r_squared = 0.45 if key in {"turbidity", "turbidity_adc"} else 0.55
-
     if r_squared < minimum_r_squared:
         return None
-
-    tolerance = config.NOISE_TOLERANCE.get(key, 0.0)
 
     consistency = _direction_consistency(
         smoothed,
@@ -343,18 +344,13 @@ def _fit_trend(history, key):
     if consistency < 0.70:
         return None
 
-    current = statistics.median(
-        [value for _, value in smoothed[-3:]]
-    )
-
-    return slope, r_squared, consistency, current, span
+    return slope, r_squared, consistency, span
 
 
-def _prediction(history, key, name, unit, safe, critical, danger, trend):
-    fit = _fit_trend(history, key)
-    if fit is None:
+def _prediction(fit, current, name, unit, safe, critical, danger, trend):
+    if fit is None or current is None:
         return None
-    slope, r_squared, consistency, current, span = fit
+    slope, r_squared, consistency, span = fit
     direction = 1 if trend == "rising" else -1
     directional_slope = slope * direction
     if directional_slope <= 0:
@@ -426,17 +422,11 @@ def _turbidity_prediction(snapshot, history):
     adc = snapshot.get('turbidity_adc')
     samples = history.get('turbidity_adc', [])
     max_age = config.HISTORY_SAMPLE_INTERVAL + config.QUALITY_MAX_PACKET_GAP_SECONDS
-    # Recompute the ADC forecast from this snapshot. A previous target must
-    # disappear when reached, when the trend reverses, or when readings stop.
-    with config.prediction_lock:
-        config.active_prediction_alerts.pop('turbidity:adc', None)
-        if adc is not None:
-            config.active_prediction_alerts.pop('turbidity:rising', None)
-
     if adc is None:
         # Preserve support for older firmware reporting actual numeric NTU.
-        if get_prediction_numeric('turbidity', snapshot.get('turbidity')) is not None:
-            alert = _prediction(history, 'turbidity', 'Turbidity', ' NTU',
+        current = get_prediction_numeric('turbidity', snapshot.get('turbidity'))
+        if current is not None:
+            alert = _prediction(_fit_trend(history, 'turbidity'), current, 'Turbidity', ' NTU',
                                config.TURBIDITY_LIMIT_NTU, config.TURBIDITY_CRITICAL_NTU,
                                'become too cloudy', 'rising')
             if alert:
@@ -452,7 +442,7 @@ def _turbidity_prediction(snapshot, history):
     fit = _fit_trend(history, 'turbidity_adc')
     if fit is None:
         return None
-    slope, r_squared, consistency, _, _ = fit
+    slope, r_squared, consistency, _ = fit
     ranges = calibration.effective_adc_ranges()  # Sorted by increasing ADC.
     index = next(i for i, row in enumerate(ranges) if row['min'] <= adc <= row['max'])
     target_index = index + (1 if slope > 0 else -1)
@@ -499,55 +489,38 @@ def _add_limit(
     )
 
 
-def _active_predictions(candidates):
+def _active_predictions(candidates, snapshot):
+    """Show the newest forecast. Break simultaneous onsets by shortest ETA."""
     now = time.time()
-
-    duration = max(
-        1.0,
-        float(config.PREDICTION_ALERT_DURATION_SECONDS),
-    )
-
+    duration = max(1.0, float(config.PREDICTION_ALERT_DURATION_SECONDS))
+    current = {(a['sensor'], a['trend'], a['limit'], a.get('target_label'), a.get('source')): a
+               for a in candidates if a is not None}
     with config.prediction_lock:
-        expired_keys = [
-            key
-            for key, stored in config.active_prediction_alerts.items()
-            if stored["expires_at"] <= now
-        ]
-
-        for key in expired_keys:
-            del config.active_prediction_alerts[key]
-
-        for alert in candidates:
-            if alert is None:
-                continue
-
-            key = (
-                alert["sensor"].lower().replace(" ", "_")
-                + ":"
-                + ("adc" if alert.get("source") == "turbidity_adc" else alert["trend"])
-            )
-
-            stored = alert.copy()
-
-            stored.update(
-                {
-                    "created_at": now,
-                    "expires_at": now + duration,
-                    "lasts_seconds": duration,
-                    "prediction_delay_seconds": config.PREDICTION_DELAY_SECONDS,
-                }
-            )
-
-            # Refresh active prediction so its ETA follows the current trend.
-            config.active_prediction_alerts[key] = {
-                "expires_at": stored["expires_at"],
-                "alert": stored,
-            }
-
-        return [
-            stored["alert"]
-            for stored in config.active_prediction_alerts.values()
-        ]
+        cache = config.active_prediction_alerts
+        previous = cache.get('visible', {})
+        new = current.keys() - previous.get('seen', set())
+        key = previous.get('key')
+        if new:
+            key = min(new, key=lambda k: (current[k]['eta_seconds'], k[:3]))
+        if key in current:
+            alert = dict(current[key], created_at=previous['alert']['created_at']
+                         if key == previous.get('key') else now,
+                         expires_at=now + duration, lasts_seconds=duration,
+                         prediction_delay_seconds=config.PREDICTION_DELAY_SECONDS)
+            cache['visible'] = dict(key=key, seen=set(current), alert=alert)
+            return [alert]
+        alert = previous.get('alert')
+        if alert and alert.get('source') != 'turbidity_adc' and alert['expires_at'] > now:
+            field = {'Temperature': 'temp', 'pH Level': 'ph', 'Turbidity': 'turbidity'}[alert['sensor']]
+            reading = get_prediction_numeric(field, snapshot.get(field))
+            if reading is not None and (reading - alert['limit']) * (1 if alert['trend'] == 'rising' else -1) < 0:
+                previous['seen'] = set(current)
+                return [alert]
+        # A superseded trend must leave and reappear to count as new again.
+        cache.clear()
+        if current:
+            cache['visible'] = dict(seen=set(current))
+        return []
 
 
 def build_sensor_alerts(sensor_snapshot, history_snapshot):
@@ -584,6 +557,11 @@ def _build_sensor_alerts_locked(sensor_snapshot, history_snapshot):
         "ph",
         sensor_snapshot.get("ph"),
     )
+
+    if temp is None:
+        history_snapshot['temp'] = []
+    if ph is None:
+        history_snapshot['ph'] = []
 
     # ------------------------- Water level -------------------------
 
@@ -661,17 +639,18 @@ def _build_sensor_alerts_locked(sensor_snapshot, history_snapshot):
             else "warning"
         )
 
+        limit = config.TEMP_OVERHEAT_LIMIT_C if severity == 'critical' else config.TEMP_LIMIT_C
         _add_limit(
             alerts,
             "Temperature",
             "Temperature is above its limit",
             (
                 f"Current temperature is {temp:g}°C. "
-                f"The configured limit is {config.TEMP_LIMIT_C:g}°C."
+                f"The {severity} limit is {limit:g}°C."
             ),
             temp,
             "°C",
-            config.TEMP_LIMIT_C,
+            limit,
             severity,
         )
 
@@ -746,10 +725,11 @@ def _build_sensor_alerts_locked(sensor_snapshot, history_snapshot):
 
     # ------------------------- Predictions -------------------------
 
+    ph_fit = _fit_trend(history_snapshot, 'ph')
     candidates = [
         _prediction(
-            history_snapshot,
-            "temp",
+            _fit_trend(history_snapshot, "temp"),
+            temp,
             "Temperature",
             "°C",
             config.TEMP_LIMIT_C,
@@ -759,8 +739,8 @@ def _build_sensor_alerts_locked(sensor_snapshot, history_snapshot):
         ),
         _turbidity_prediction(sensor_snapshot, history_snapshot),
         _prediction(
-            history_snapshot,
-            "ph",
+            ph_fit,
+            ph,
             "pH Level",
             " pH",
             config.PH_HIGH_LIMIT,
@@ -769,8 +749,8 @@ def _build_sensor_alerts_locked(sensor_snapshot, history_snapshot):
             "rising",
         ),
         _prediction(
-            history_snapshot,
-            "ph",
+            ph_fit,
+            ph,
             "pH Level",
             " pH",
             config.PH_LOW_LIMIT,
@@ -781,7 +761,7 @@ def _build_sensor_alerts_locked(sensor_snapshot, history_snapshot):
     ]
 
     alerts.extend(
-        _active_predictions(candidates)
+        _active_predictions(candidates, sensor_snapshot)
     )
 
     return sensor_control.filter_alerts(alerts)

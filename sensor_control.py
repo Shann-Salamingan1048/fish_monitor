@@ -114,9 +114,7 @@ def input_reconnected():
         calibration.reset_readings()
         config.sensor_history['turbidity_adc'].clear()
         config.last_history_sample_at['turbidity_adc'] = 0
-        with config.prediction_lock:
-            config.active_prediction_alerts.pop('turbidity:adc', None)
-            config.active_prediction_alerts.pop('turbidity:rising', None)
+        config.clear_prediction_alert_cache()
         import water_control
         water_control.reset_confirmation()
         for key in _raw:

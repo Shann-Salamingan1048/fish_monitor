@@ -31,6 +31,36 @@ The Pi can open `http://127.0.0.1:5000`. On a phone connected to the same Wi-Fi,
 
 One Mega does not guarantee a cure for pump-induced USB disconnections. Electrical interference or supply/ground disturbances still need hardware diagnosis if they persist.
 
+## Start automatically on Raspberry Pi OS
+
+Extract AquaPi into its permanent folder. For an upgrade, stop your current AquaPi process and keep your Pi’s existing `fish_tank_state.db` in that folder. Install the Raspberry Pi OS packages and Python dependencies listed in `requirements.txt`. If your manual launch uses custom `FISHTANK_*` environment variables, put the same values in `/etc/default/aquapi` (one `NAME=value` per line) before enabling the service. Use `sudoedit /etc/default/aquapi` and restrict access if it contains credentials.
+
+Open a terminal in the extracted folder containing `main.py` and `install_autostart.py`. Run these commands once as your normal Pi user:
+
+```bash
+python3 install_autostart.py
+systemctl is-enabled aquapi
+systemctl is-active aquapi
+```
+
+The checks should print `enabled` and `active`. To test a restart, run `sudo reboot`. After the Pi starts again, open `http://localhost:5000` on the Pi or run `systemctl is-active aquapi` in a terminal. The monitor starts automatically after both power-on and restart.
+
+The installer selects the project's `.venv/bin/python` when available, verifies the unit, starts AquaPi immediately and enables it at boot. Monitoring, scheduling and the web dashboard run before desktop login. On the Pi, open `http://localhost:5000` in a browser. The service runs headless. For the native Tk window in a desktop session, first stop the service with `sudo systemctl stop aquapi`, then run `python main.py` in the app environment.
+
+Use `journalctl -u aquapi -b -n 50 --no-pager` for this boot’s logs. After an in-place code update, use `sudo systemctl restart aquapi`. To stop it and remove boot startup, use `sudo systemctl disable --now aquapi`.
+
+## Tank defaults
+
+| Setting | Default |
+|---|---|
+| Three-point pH | 4.01 at ADC 917, 6.86 at 828.33, 9.18 at 758.11 |
+| Turbidity | 0–399 Very Cloudy, 400–599 Cloudy, 600–1023 Clear |
+| Feeding | Every day at 07:00 and 19:00, three cycles each, in the tank timezone (default Asia/Manila) |
+| Temperature | Warning at 29 °C, critical at 32 °C |
+| pH | Warning at or beyond 6.5 and 8.0, critical at or beyond 6.0 and 8.5 |
+
+The Pi sends calibration and protection thresholds to the combined Mega firmware on connection. The packaged database starts in normal monitoring mode. Upgrades keep saved calibration profiles and nonempty feeding schedules. On the first upgrade, an empty schedule gets the two defaults. Edits and deletions then survive restarts. Temperature and pH limit groups matching the previous factory values upgrade once, independently. A customized group keeps its settings.
+
 ## Laptop preview
 
 In `main.py`, uncomment the following line, save, then run `python main.py` from this folder. For a browser-only preview, run `python main.py --headless --open-browser`.
@@ -45,7 +75,7 @@ Choose **System settings → Display → Theme** on the web, or use the **Light/
 
 ## Turbidity Developer option
 
-View live ADC alongside an illustrative NTU calculation or an estimate based on saved references. Choose ADC or NTU clarity ranges, add known-NTU reference points, and save without re-uploading the Mega. Existing ADC calibration remains compatible. See `TURBIDITY_NTU.md` for the steps and distinction between web NTU and the separate serial diagnostic.
+View live ADC alongside the 5 V curve estimate or an interpolation from saved NTU references. Choose ADC or NTU clarity ranges, add known-NTU reference points, and save without re-uploading the Mega. Existing ADC calibration remains compatible. See `TURBIDITY_NTU.md` for the steps and distinction between web NTU and the separate serial diagnostic.
 
 ## Scheduled water changes
 
@@ -53,7 +83,7 @@ Create weekly or everyday drain/refill schedules in Web → Water Changes → Wa
 
 ## Turbidity predictions
 
-The Pi uses recent raw ADC readings to estimate when the trend may enter the next calibrated range. Both rising and falling ADC can produce a forecast. Notifications use the destination range’s exact display label, including when adjacent ranges share a category. These predictions appear in desktop and web notifications after the configured Prediction history interval and sufficient consistent readings. Calibration, disabled sensors, missing readings and reconnects reset this observation period. ADC forecasts also follow ranges configured with NTU reference calibration.
+The Pi uses recent raw ADC readings to estimate when the trend may enter the next calibrated range. Both rising and falling ADC can produce a forecast. Notifications use the destination range’s exact display label, including when adjacent ranges share a category. A newly detected forecast replaces the previous one across sensors. If forecasts start in the same sample, the shortest ETA wins. Limit warnings and critical alerts stay visible independently. Predictions appear in desktop and web notifications after the configured Prediction history interval and sufficient consistent readings. Calibration, disabled sensors, missing readings and reconnects reset this observation period. ADC forecasts also follow ranges configured with NTU reference calibration.
 
 ## Aquarium overview
 

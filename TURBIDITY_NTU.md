@@ -2,9 +2,18 @@
 
 ## Developer option
 
-The web Developer option shows **Turbidity ADC** and **Turbidity NTU** together. ADC is the integer average reported by the Mega after each 100-sample batch. With a fresh ADC and no saved NTU references, Developer option shows a live **illustrative** value using an assumed linear scale from ADC 1023 to 0 across 0 to 1000 NTU. At ADC 900, for example, `(1023 − 900) × 1000 / 1023 = 120.23`. This display-only assumption has no sensor-specific accuracy and never drives alarms or pump decisions. With known-NTU references, Developer option interpolates between the nearest two saved points. Outside their span, the page identifies the nearest reference and shows the illustrative scale separately. Old, disabled or paused ADC readings are withheld. After Finish calibration, the display updates automatically on the next fresh sample.
+Developer option shows the fresh Mega ADC average alongside an NTU estimate. Higher ADC corresponds to clearer water for this calibration. With a 10-bit ADC and a nominal 5.0 V analog reference, the display uses:
 
-Update the Python application and web assets, then restart `main.py`. **No new Mega upload is needed if the previous combined Mega firmware is already installed.** The single `.ino`, pin assignments, sampling schedule and EEPROM behavior are unchanged. Keep your existing database when updating; it contains your settings, schedules and calibration.
+```text
+V = ADC × 5.0 / 1023
+estimated NTU = clamp(−1120.4 × V² + 5742.3 × V − 4352.9, 0, 3000)
+```
+
+The curve applies from 2.5 to 4.2 V. At ADC 700, the display gives about 2178.6 NTU at 3.42 V. Below the curve the page shows a capped 3000 NTU estimate. Above it the page shows a 0 NTU clear-end estimate. These display limits describe saturation. For example, ADC 900 exceeds the curve’s voltage range and cannot establish that the water measures exactly 0 NTU.
+
+Saved known-NTU references take precedence inside their measured ADC span. Outside that span the page identifies the fallback to the 5 V estimate. The sensor model and actual analog reference affect accuracy. DFRobot describes the [SEN0189 as a qualitative sensor](https://www.dfrobot.com/forum/topic/315216). The [example circuit and equation](https://thearduinoclassroom.com/sites/default/files/2019-12/Project%2017%20Turbidity%20Sensor_0.pdf) illustrate the 5 V curve. Clarity, alarms and pumping use the configured ADC boundaries. A fresh reading appears after calibration finishes or acquisition resumes.
+
+Update and restart the Pi application. The current combined Mega firmware already accepts the Pi’s three-point pH profile and clarity ranges. The Pi maps each valid raw ADC reading to its configured web and desktop label. Standalone Mega telemetry uses the original five clarity labels. These Pi updates require no firmware upload.
 
 1. Enable Developer option in `main.py`, start AquaPi, sign in as Admin, and open **Developer option**.
 2. Click **Start calibration**. Water-level protection stays active; pH and turbidity cannot start water replacement while calibrating.
@@ -28,7 +37,7 @@ Cloudy and Very Cloudy can start correction after the configured confirmation pe
 
 ## Sampling and serial diagnostic
 
-The unchanged sketch collects 100 samples, one every 5 ms, using a 32-bit running sum and no sample array. A batch takes at least 500 ms; batches start about every 2.5 seconds. Serial telemetry repeats the latest completed result at 500 ms. Commands, float checks, feeder timing and other services continue between samples.
+The sketch collects 100 samples, one every 5 ms, using a 32-bit running sum and no sample array. A batch takes at least 500 ms; batches start about every 2.5 seconds. Serial telemetry repeats the latest completed result at 500 ms. Commands, float checks, feeder timing and other services continue between samples.
 
 A separate diagnostic can still print:
 
@@ -38,4 +47,4 @@ MegaInputStatus,TURBIDITY:LIVE,rawAdc:900.00,NTU:UNCALIBRATED,SAMPLES:100,NTU_ME
 
 **Serial diagnostic NTU is separate from web NTU calibration.** It uses `TURBIDITY_NTU_POINTS` constants in the sketch and can still say `UNCALIBRATED` after web calibration. Web calibration does not change those constants or write EEPROM. The normal telemetry's integer `TurbidityADC` is used for web NTU and local rule mapping; the diagnostic prints the fractional mean. Use Developer option for the web-calibrated NTU value.
 
-For standalone serial NTU, enter measured `{ADC, NTU}` reference pairs in the sketch constants and upload. Those constants do not change the web profile. Only the illustrative web scale assigns 1000 to ADC 0.
+For standalone serial NTU, enter measured `{ADC, NTU}` reference pairs in the sketch constants and upload. Those constants do not change the web profile.

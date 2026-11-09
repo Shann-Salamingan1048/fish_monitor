@@ -14,14 +14,13 @@ PH_PAIRS = {'686_918': ('adc686', 'adc918'), '401_686': ('adc401', 'adc686'),
             '401_918': ('adc401', 'adc918')}
 
 CATEGORIES = ('Very Cloudy', 'Cloudy', 'Slightly Cloudy', 'Clear', 'Very Clear')
+DEFAULT_PH = {'points': 3, 'adc401': 917, 'adc686': 828.33, 'adc918': 758.11}
 DEFAULT_RANGES = [
-    {'min': 0, 'max': 170, 'label': 'Very Cloudy', 'category': 'Very Cloudy'},
-    {'min': 171, 'max': 409, 'label': 'Cloudy', 'category': 'Cloudy'},
-    {'min': 410, 'max': 750, 'label': 'Slightly Cloudy', 'category': 'Slightly Cloudy'},
-    {'min': 751, 'max': 954, 'label': 'Clear', 'category': 'Clear'},
-    {'min': 955, 'max': 1023, 'label': 'Very Clear', 'category': 'Very Clear'},
+    {'min': 0, 'max': 399, 'label': 'Very Cloudy', 'category': 'Very Cloudy'},
+    {'min': 400, 'max': 599, 'label': 'Cloudy', 'category': 'Cloudy'},
+    {'min': 600, 'max': 1023, 'label': 'Clear', 'category': 'Clear'},
 ]
-_profile = {'ph': None, 'turbidity': None}
+_profile = {'ph': DEFAULT_PH.copy(), 'turbidity': None}
 _compiled_ranges = copy.deepcopy(DEFAULT_RANGES)
 _maintenance = False
 _ph_filtered = None
@@ -181,7 +180,8 @@ def initialize():
     global _profile, _maintenance, _compiled_ranges
     with config.sensor_lock:
         # Invalid stored calibration is an error, never silently reinterpret water.
-        _profile = validate(json.loads(config.get_db_value('sensor_calibration', '{"ph":null,"turbidity":null}')))
+        saved = config.get_db_value('sensor_calibration')
+        _profile = validate(json.loads(saved)) if saved is not None else {'ph': DEFAULT_PH.copy(), 'turbidity': None}
         _compiled_ranges = compile_adc_ranges(_profile)
         _maintenance = config.get_db_value('calibration_active', '0') == '1'
         reset_readings()
@@ -273,17 +273,17 @@ def apply_packet(fields):
     now = time.monotonic()
     pa = _adc(fields.get('pHADC')) if policy['ph'] else None
     ta = _adc(fields.get('TurbidityADC')) if policy['turbidity'] else None
-    if ta is not None and int(ta) != ta:
+    if ta is not None and (int(ta) != ta or str(fields.get('Turbidity', '')).strip().upper()
+                           in {'WAITING', 'PAUSED', 'DISABLED', 'ERROR', '--'}):
         ta = None
     _live.update(phADC=pa, turbidityADC=ta, receivedAt=now)
-    anchor = _profile['ph']
     if pa is None:
         _ph_filtered = _ph_time = None
     # The Mega reports the calibrated/filtered pH used by its local controller.
-    if _profile['turbidity'] is not None:
+    if ta is not None:
+        fields['Turbidity'] = next(row['label'] for row in _compiled_ranges if row['min'] <= ta <= row['max'])
+    elif _profile['turbidity'] is not None:
         fields['Turbidity'] = 'WAITING'
-        if ta is not None:
-            fields['Turbidity'] = next(row['label'] for row in _compiled_ranges if row['min'] <= ta <= row['max'])
     # Never turn disabled acquisition into a valid reading.
     for key, field in (('ph', 'pH'), ('turbidity', 'Turbidity')):
         if not sensor_control.enabled(key):
@@ -295,12 +295,24 @@ def apply_packet(fields):
 def _ntu_reading(adc):
     points = _profile.get('turbidityPoints')
     ntu = estimate_ntu(adc, points)
-    state = ('unavailable' if adc is None else 'illustrative' if not points
-             else 'out_of_range' if ntu is None else 'calibrated')
-    # A scale illustration for Developer option only. Never feed it to tank rules.
-    illustration = (1023 - adc) * 1000 / 1023 if adc is not None and ntu is None else None
-    return {'turbidityNTU': ntu, 'turbidityNTUState': state,
-            'illustrativeNTU': illustration}
+    result = dict(turbidityNTU=ntu, turbidityNTUState='unavailable',
+                  estimatedNTU=None, estimateState=None, turbidityVoltage=None)
+    if adc is None:
+        return result
+    voltage = adc * 5.0 / 1023
+    result['turbidityVoltage'] = voltage
+    if ntu is not None:
+        result['turbidityNTUState'] = 'calibrated'
+        return result
+    result['turbidityNTUState'] = 'out_of_range' if points else 'estimated'
+    if voltage < 2.5:
+        result.update(estimatedNTU=3000.0, estimateState='cloudy_limit')
+    elif voltage > 4.2:
+        result.update(estimatedNTU=0.0, estimateState='clear_limit')
+    else:
+        estimate = (-1120.4 * voltage + 5742.3) * voltage - 4352.9
+        result.update(estimatedNTU=max(0.0, min(3000.0, estimate)), estimateState='curve')
+    return result
 
 
 def clarity_labels():

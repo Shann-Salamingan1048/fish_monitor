@@ -87,8 +87,8 @@ const SENSOR_ALERT_LIMITS = {
     temperature: {
         label: "Temperature",
         unit: "\u00b0C",
-        limit: 30,
-        criticalLimit: 35,
+        limit: 29,
+        criticalLimit: 32,
         noiseTolerance: 0.05,
         minRisePerSecond: 0.005,
         dangerWord: "overheat"
@@ -106,9 +106,9 @@ const SENSOR_ALERT_LIMITS = {
         label: "pH Level",
         unit: " pH",
         lowLimit: 6.5,
-        highLimit: 8.5,
+        highLimit: 8.0,
         criticalLowLimit: 6.0,
-        criticalHighLimit: 9.0,
+        criticalHighLimit: 8.5,
         noiseTolerance: 0.01,
         minRisePerSecond: 0.001,
         highDangerWord: "become too alkaline",
@@ -1056,6 +1056,8 @@ function injectStatusLegend() {
     }
 }
 
+let lastAlertMarkup = '';
+
 function renderSmartAlerts(data) {
     const alertList = document.getElementById("alert-list");
     const alertSummary = document.getElementById("alert-summary");
@@ -1071,15 +1073,18 @@ function renderSmartAlerts(data) {
     if (data.sensorControls?.allDisabled) {
         alertSummary.className = "alert-summary";
         alertSummary.textContent = "—";
-        alertList.innerHTML = "";
+        if (alertList.childElementCount) alertList.replaceChildren();
+        lastAlertMarkup = "";
     } else if (data.connection?.stale) {
         alertSummary.className = "alert-summary warning";
         alertSummary.textContent = "—";
-        alertList.innerHTML = "";
+        if (alertList.childElementCount) alertList.replaceChildren();
+        lastAlertMarkup = "";
     } else if (alerts.length === 0) {
         alertSummary.className = "alert-summary normal";
         alertSummary.textContent = "No active alerts";
-        alertList.innerHTML = "";
+        if (alertList.childElementCount) alertList.replaceChildren();
+        lastAlertMarkup = "";
     } else {
         const summaryClass = criticalCount > 0 ? "critical" : predictionCount > 0 ? "prediction" : "warning";
         const notificationWord = alerts.length === 1 ? "notification" : "notifications";
@@ -1088,7 +1093,7 @@ function renderSmartAlerts(data) {
         alertSummary.className = "alert-summary " + summaryClass;
         alertSummary.innerHTML = "<i class=\"fas fa-bell\"></i><span>" + alerts.length + " active " + notificationWord + predictionText + ".</span>";
 
-        alertList.innerHTML = alerts.map(alert => {
+        const markup = alerts.map(alert => {
             const severity = getSafeSeverity(alert.severity);
             const valueText = alert.sensor !== "Turbidity" && Number.isFinite(Number(alert.value))
                 ? "<span><i class=\"fas fa-gauge-high\"></i> " + escapeHtml((['°C', '°F'].includes(alert.unit) ? Number(alert.value).toFixed(1) : formatNumber(Number(alert.value)))) + escapeHtml(alert.unit || "") + "</span>"
@@ -1113,6 +1118,10 @@ function renderSmartAlerts(data) {
                 "</div>" +
             "</article>";
         }).join("");
+        if (markup !== lastAlertMarkup) {
+            alertList.innerHTML = markup;
+            lastAlertMarkup = markup;
+        }
     }
 
     if (alertUpdated) {

@@ -50,22 +50,22 @@ def test_default_adc_trend_reaches_web_and_desktop(clock):
     result = send(840)
     assert len(result) == 1
     alert = result[0]
-    assert alert['target_label'] == alert['target_category'] == 'Slightly Cloudy'
-    assert alert['limit'] == 750
+    assert alert['target_label'] == alert['target_category'] == 'Cloudy'
+    assert alert['limit'] == 599
     assert alert['unit'] == ' ADC' and 'NTU' not in alert['message']
     assert alert['trend'] == 'falling' and alert['eta_seconds'] > 0
     assert config.sensor_history['turbidity'] == []
     assert len(config.sensor_history['turbidity_adc']) == 11
     assert forecasts(flask_app.test_client().get('/api/sensors').json['alerts'])
     assert forecasts(build_snapshot()[-1])
-    assert 'may reach Slightly Cloudy' in alert['short_message']
+    assert 'may reach Cloudy' in alert['short_message']
 
 
 def test_cloudy_can_predict_very_cloudy(clock):
-    result = trend(clock, range(380, 259, -12))
+    result = trend(clock, range(555, 434, -12))
     assert len(result) == 1
     assert result[0]['target_category'] == 'Very Cloudy'
-    assert result[0]['limit'] == 170
+    assert result[0]['limit'] == 399
     assert send(100) == []
 
 
@@ -165,12 +165,11 @@ def test_forecasts_nearest_calibrated_label_in_both_directions(clock, values, la
 
 
 def test_reversal_replaces_old_forecast_and_reached_label_is_retired(clock):
-    result = trend(clock, range(800, 901, 10))
-    assert result[0]['target_label'] == 'Very Clear'
-    result = trend(clock, range(900, 789, -10))
-    assert len(result) == 1 and result[0]['target_label'] == 'Slightly Cloudy'
-    result = send(750)
-    assert all(item['target_label'] != 'Slightly Cloudy' for item in result)
+    result = trend(clock, range(450, 551, 10))
+    assert result[0]['target_label'] == 'Clear'
+    result = trend(clock, range(550, 439, -10))
+    assert len(result) == 1 and result[0]['target_label'] == 'Very Cloudy'
+    assert send(399) == []
 
 
 def test_one_range_has_no_transition_to_predict(clock):
@@ -184,3 +183,38 @@ def test_ntu_calibration_forecasts_recovery_using_raw_adc(clock):
     result = trend(clock, range(520, 621, 10))
     assert (result[0]['target_label'], result[0]['limit']) == ('Clear custom', 701)
     assert result[0]['unit'] == ' ADC'
+
+
+def test_new_forecast_replaces_prior_sensor_with_limit_alerts_still_visible(clock):
+    from predictions import _fit_window
+    start = clock[0] - 30
+    data = {'temp': '27', 'ph': '7.4', 'turbidity': 'Clear', 'float_stat': 'Overflow'}
+    history = {'temp': [(start + i * 3, 26.5 + i * .05) for i in range(11)]}
+    def visible():
+        alerts = build_sensor_alerts(data, history)
+        assert any(a['sensor'] == 'Water Level' and a['severity'] == 'critical' for a in alerts)
+        return [a['sensor'] for a in alerts if a['type'] == 'prediction']
+    assert visible() == ['Temperature']
+    history['ph'] = [(start + i * 3, 7.2 + i * .02) for i in range(11)]
+    assert visible() == ['pH Level']
+    before = _fit_window.cache_info()
+    assert visible() == ['pH Level']
+    assert _fit_window.cache_info().misses == before.misses
+    data['ph'] = 'WAITING'
+    assert visible() == []
+
+
+def test_simultaneous_predictions_use_nearest_eta_and_replace_at_target(clock):
+    start = clock[0] - 30
+    history = {'temp': [(start + i * 3, 28 + i * .09) for i in range(11)],
+               'ph': [(start + i * 3, 7.2 + i * .03) for i in range(11)]}
+    data = {'temp': 28.9, 'ph': 7.5, 'turbidity': 'Clear', 'float_stat': 'Normal'}
+    # Anchor the test thresholds independently of any other settings form test.
+    from unittest.mock import patch
+    with patch.multiple(config, TEMP_LIMIT_C=29, TEMP_OVERHEAT_LIMIT_C=32, PH_HIGH_LIMIT=8):
+        def forecast():
+            return [(a['sensor'], a['limit']) for a in build_sensor_alerts(data, history)
+                    if a['type'] == 'prediction']
+        assert forecast() == [('Temperature', 29)]
+        data['temp'] = 29.1
+        assert forecast() == [('Temperature', 32)]

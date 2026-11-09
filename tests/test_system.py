@@ -42,6 +42,8 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(config, 'QUALITY_CONFIRM_SECONDS', 0.0)
     fan_control.initialize()
     config.init_database()
+    with config.db_connect() as conn:
+        conn.execute("DELETE FROM feeding_schedules")
     config.load_persisted_settings()
     calibration.initialize()
     sensor_control.initialize()
@@ -257,3 +259,39 @@ def test_previous_capped_firmware_requires_upgrade():
     feeder.handle_status('MegaOutput,FEEDER:V2')
     with pytest.raises(ValueError):
         feeder.request_feed(30)
+
+
+def test_defaults_seed_once_and_preserve_custom_schedule(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, 'DB_FILE', str(tmp_path / 'factory.db'))
+    config.init_database()
+    config.init_database()
+    rows = config.get_feeding_schedules()
+    assert [(r['day'], r['time'], r['cycles'], r['enabled']) for r in rows] == [
+        (7, '07:00', 3, True), (7, '19:00', 3, True)]
+    calibration.initialize()
+    assert calibration.status()['profile']['ph'] == dict(points=3, adc401=917, adc686=828.33, adc918=758.11)
+    for row in rows:
+        config.delete_feeding_schedule(row['id'])
+    config.init_database()
+    assert config.get_feeding_schedules() == []
+    config.create_feeding_schedule(1, '09:30', cycles=2)
+    with config.db_connect() as conn:
+        conn.execute("DELETE FROM app_state WHERE key='tank_defaults_v2'")
+    config.init_database()
+    assert [r['time'] for r in config.get_feeding_schedules()] == ['09:30']
+
+
+def test_limit_upgrade_keeps_custom_temperature_group(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, 'DB_FILE', str(tmp_path / 'upgrade.db'))
+    config.init_database()
+    with config.db_connect() as conn:
+        conn.execute("DELETE FROM app_state WHERE key='tank_defaults_v2'")
+        conn.executemany("INSERT OR REPLACE INTO app_state VALUES(?,?,0)", [
+            ('limit_temp', '28'), ('limit_temp_critical', '35'),
+            ('limit_ph_low', '6.5'), ('limit_ph_high', '8.5'),
+            ('limit_ph_critical_low', '6.0'), ('limit_ph_critical_high', '9.0')])
+    config.init_database()
+    assert float(config.get_db_value('limit_temp')) == 28
+    assert float(config.get_db_value('limit_temp_critical')) == 35
+    assert float(config.get_db_value('limit_ph_high')) == 8.0
+    assert float(config.get_db_value('limit_ph_critical_high')) == 8.5

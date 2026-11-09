@@ -98,15 +98,16 @@
         if (live.turbidityNTU != null) {
             value = `${live.turbidityNTU.toFixed(2)} NTU`;
             note = 'Interpolated from your saved NTU references.';
-        } else if (live.illustrativeNTU != null) {
-            value = `${live.illustrativeNTU.toFixed(2)} NTU (illustrative)`;
-            note = `Assumed linear scale: (1023 − ${liveADC}) × 1000 / 1023. Add known-NTU references for a sensor-specific reading.`;
-            if (live.turbidityNTUState === 'out_of_range') {
-                const points = state.profile.turbidityPoints;
-                const clearer = liveADC > points[0].adc;
-                const edge = clearer ? points[0] : points[points.length - 1];
-                note = `Outside reference range (nearest: ADC ${edge.adc}, ${edge.ntu} NTU). ${note}`;
+        } else if (live.estimatedNTU != null) {
+            const volts = live.turbidityVoltage.toFixed(2);
+            if (live.estimateState === 'curve') {
+                value = `≈ ${live.estimatedNTU.toFixed(1)} NTU`;
+                note = `5 V sensor curve at ${volts} V. Add known-NTU references to calibrate this probe.`;
+            } else {
+                value = live.estimateState === 'cloudy_limit' ? '3000 NTU (capped estimate)' : '0 NTU (clear-end estimate)';
+                note = `${volts} V is outside the 2.5–4.2 V curve. This is a display limit.`;
             }
+            if (live.turbidityNTUState === 'out_of_range') note = 'Outside your saved reference range. ' + note;
         }
         $('live-turbidity-ntu').textContent = value;
         $('adc-note').textContent = note;

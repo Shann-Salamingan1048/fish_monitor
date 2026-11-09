@@ -12,7 +12,7 @@ import config
 config.DEVELOPER_OPTIONS = True
 
 # Laptop preview: uncomment the next line, save, and restart. Comment it for the Pi.
-#config.SIMULATE_SENSORS = True
+# config.SIMULATE_SENSORS = True
 import calibration
 import fan_control
 import feeding_control
