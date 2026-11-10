@@ -33,9 +33,11 @@ One Mega does not guarantee a cure for pump-induced USB disconnections. Electric
 
 ## Start automatically on Raspberry Pi OS
 
-On the Pi desktop, open the copy of `install_autostart.py` beside your working `main.py` in Thonny. Click **Run** once and approve the Pi password prompt. Setup enables automatic desktop login and retires the previous boot service. After the success message, restart when the feeder and pumps are idle. AquaPi opens its desktop window and localhost dashboard. An existing Cloudflare Tunnel service is enabled for boot as well.
+On the Pi desktop, open the copy of `install_autostart.py` beside your working `main.py` in Thonny. Click **Run** once and approve the Pi password prompt. Setup enables automatic desktop login and retires the previous boot service. After the success message, restart when the feeder and pumps are idle. AquaPi opens its desktop window. The web dashboard runs in the background until you open it in a browser. An existing Cloudflare Tunnel service is enabled for boot as well.
 
 ## Tank defaults
+
+The default admin PIN on a fresh installation is `admin123`. To change it, open **Controls & settings → Admin PIN** on the Pi.
 
 | Setting | Default |
 |---|---|

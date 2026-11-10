@@ -1,7 +1,6 @@
 """Local controls with asynchronous status and command handling."""
 import tkinter as tk
 from tkinter import ttk
-import webbrowser
 import threading
 import queue
 import config
@@ -82,7 +81,7 @@ class LocalControls(tk.Toplevel):
         content.columnconfigure(0, weight=1)
         self.tabs, self.pages, self.navigation, self.canvases = {}, {}, {}, {}
         sections = [('Feeding', 'Feeding'), ('Water pumps', 'Water Changes'), ('Fan', 'Cooling Fan'),
-                    ('Camera', 'Camera'), ('Alert settings', 'System settings'), ('Admin PIN', 'Admin PIN')]
+                    ('Alert settings', 'System settings'), ('Admin PIN', 'Admin PIN')]
         if config.DEVELOPER_OPTIONS:
             sections.append(('Sensors', 'Sensors'))
         for key, label in sections:
@@ -108,7 +107,6 @@ class LocalControls(tk.Toplevel):
         self._build_feeding(schedule_callback)
         self._build_pumps(water_schedule_callback)
         self._build_fan()
-        self._build_camera()
         self._build_limits()
         self._build_pin()
         if config.DEVELOPER_OPTIONS:
@@ -191,13 +189,6 @@ class LocalControls(tk.Toplevel):
             button.grid(row=0, column=1, rowspan=2, padx=(12, 0))
             self.sensor_rows[key] = (status, button)
 
-    def _build_camera(self):
-        panel = self.tabs['Camera']; self._title(panel, 'Camera')
-        arrows = ttk.Frame(panel, style='Aqua.Card.TFrame'); arrows.pack(pady=(0, 20))
-        for name, r, c in [('up', 0, 1), ('left', 1, 0), ('center', 1, 1), ('right', 1, 2), ('down', 2, 1)]:
-            self._button(arrows, name.title(), lambda cmd=name: self.run(lambda: self.camera_command(cmd))).grid(row=r, column=c, padx=4, pady=4)
-        ttk.Button(panel, text='Open camera view', style='Aqua.Primary.TButton', command=lambda: webbrowser.open(f'http://localhost:{config.WEB_PORT}/camera')).pack(anchor='w')
-
     def _build_limits(self):
         panel = self.tabs['Alert settings']; self._title(panel, 'System settings')
         values = config.get_public_limits()
@@ -242,11 +233,6 @@ class LocalControls(tk.Toplevel):
         bounds = canvas.bbox('all')
         if bounds and bounds[3] > canvas.winfo_height():
             canvas.yview_scroll(direction or (-1 if event.delta > 0 else 1), 'units')
-
-    def camera_command(self, command):
-        if not config.send_to_identified_output_serial_ports(config.build_camera_serial_message(command)):
-            raise ValueError('Camera disconnected.')
-        config.update_servo_position_for_command(command)
 
     def feed_now(self):
         cycles = self.cycles.get()
