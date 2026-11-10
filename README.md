@@ -33,21 +33,7 @@ One Mega does not guarantee a cure for pump-induced USB disconnections. Electric
 
 ## Start automatically on Raspberry Pi OS
 
-Extract AquaPi into its permanent folder. For an upgrade, stop your current AquaPi process and keep your Pi’s existing `fish_tank_state.db` in that folder. Install the Raspberry Pi OS packages and Python dependencies listed in `requirements.txt`. If your manual launch uses custom `FISHTANK_*` environment variables, put the same values in `/etc/default/aquapi` (one `NAME=value` per line) before enabling the service. Use `sudoedit /etc/default/aquapi` and restrict access if it contains credentials.
-
-Open a terminal in the extracted folder containing `main.py` and `install_autostart.py`. Run these commands once as your normal Pi user:
-
-```bash
-python3 install_autostart.py
-systemctl is-enabled aquapi
-systemctl is-active aquapi
-```
-
-The checks should print `enabled` and `active`. To test a restart, run `sudo reboot`. After the Pi starts again, open `http://localhost:5000` on the Pi or run `systemctl is-active aquapi` in a terminal. The monitor starts automatically after both power-on and restart.
-
-The installer selects the project's `.venv/bin/python` when available, verifies the unit, starts AquaPi immediately and enables it at boot. Monitoring, scheduling and the web dashboard run before desktop login. On the Pi, open `http://localhost:5000` in a browser. The service runs headless. For the native Tk window in a desktop session, first stop the service with `sudo systemctl stop aquapi`, then run `python main.py` in the app environment.
-
-Use `journalctl -u aquapi -b -n 50 --no-pager` for this boot’s logs. After an in-place code update, use `sudo systemctl restart aquapi`. To stop it and remove boot startup, use `sudo systemctl disable --now aquapi`.
+On the Pi desktop, open the copy of `install_autostart.py` beside your working `main.py` in Thonny. Click **Run** once and approve the Pi password prompt. Setup enables automatic desktop login and retires the previous boot service. After the success message, restart when the feeder and pumps are idle. AquaPi opens its desktop window and localhost dashboard. An existing Cloudflare Tunnel service is enabled for boot as well.
 
 ## Tank defaults
 
