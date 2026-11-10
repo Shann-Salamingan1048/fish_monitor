@@ -45,7 +45,7 @@ def launch():
             "--property=EnvironmentFile=-/etc/default/aquapi",
             "--property=Restart=on-failure", "--property=RestartSec=5"]
     args.extend("--setenv=" + k + "=" + os.environ[k] for k in SESSION_KEYS if os.environ.get(k))
-    checked(args + [sys.executable, str(PROJECT / "main.py"), "--open-browser"])
+    checked(args + [sys.executable, str(PROJECT / "main.py")])
 
 
 def install():
@@ -82,7 +82,7 @@ printf '%s' "$tunnel"
             atomic_write(desktop, previous)
         raise
     return ("Setup complete. Restart the Pi when the pumps and feeder are idle. "
-            "AquaPi and the local dashboard will open after desktop login.\n\n" +
+            "AquaPi will open after desktop login. The website will run in the background.\n\n" +
             ("Your existing Cloudflare service is enabled for boot." if status.endswith("loaded")
              else "No installed Cloudflare Tunnel service was found. Local startup is ready."))
 
