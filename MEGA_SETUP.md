@@ -138,4 +138,4 @@ Before restoring actuator power, verify each sensor/float display and each outpu
 
 ## Water-change schedule firmware
 
-This release adds `WATERCHANGE:V1` with bounded local drain/refill phases. Upload the single combined sketch once to enable scheduled water changes from GUI or web. Pin assignments are unchanged. On completion automatic control resumes; stops and faults pause automation. See `WATER_CHANGE_SCHEDULE.md`.
+The Pi scheduler uses the combined Mega's existing both-pumps, single-pump and stop commands. The Pi measures the shared duration and temporarily selects the corrective pump when water is high or low, resuming both after two seconds of stable Normal. See `WATER_CHANGE_SCHEDULE.md` for operation and status details.

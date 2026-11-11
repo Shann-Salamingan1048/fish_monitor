@@ -319,6 +319,12 @@ def manual_action(action):
     action = str(action or "").strip().lower()
 
     with _lock:
+        import water_schedule
+        if water_schedule.busy():
+            if action in {'stop_all', 'extract_stop', 'insert_stop'}:
+                water_schedule.stop()
+                return get_status()
+            raise ValueError('Stop the scheduled exchange before changing pump controls.')
         reset_confirmation()
         if action in {"extract_start", "insert_start", "both_start"} and not config.output_serial_ports:
             raise ValueError("MegaOutput disconnected; cannot start a pump")
@@ -392,6 +398,20 @@ def manual_action(action):
         if action == 'auto_resume':
             config.send_to_identified_output_serial_ports('MegaOutput,WATERMODE:AUTO\n')
         return get_status()
+
+
+
+def accept_pump_status(fields):
+    """Reflect the Mega's immediate acknowledgement of a manual pump command."""
+    if fields.get('REASON') != 'COMMAND':
+        return
+    extract, insert = fields.get('PUMP_EXTRACT'), fields.get('PUMP_INSERT')
+    if extract not in {'ON', 'OFF'} or insert not in {'ON', 'OFF'}:
+        return
+    with _lock:
+        _state.update(extractionOn=extract == 'ON', insertionOn=insert == 'ON',
+                      manualOverride=True, updatedAt=time.time())
+        # The following WATER report supplies the complete mode and settling state.
 
 
 def accept_mega_status(fields):

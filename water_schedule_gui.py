@@ -27,11 +27,13 @@ class WaterScheduleWindow(tk.Toplevel):
         self.day = tk.StringVar(value=config.FEEDING_DAY_NAMES[0])
         self.hour = tk.StringVar(value="08")
         self.minute = tk.StringVar(value="00")
-        self.drain = tk.StringVar()
-        self.refill = tk.StringVar()
+        self.duration = tk.StringVar()
         self.selectors = layout.day_and_time(self.day, self.hour, self.minute)
-        self.entries = (layout.field(3, "Drain (seconds)", self.drain),
-                        layout.field(4, "Refill timeout (s)", self.refill))
+        self.entries = (layout.field(3, "Shared duration (seconds)", self.duration),)
+        tk.Label(layout.header, text="60 seconds = 1 minute. High water pauses refill; low water pauses draining.\n"
+                 "Both resume after 2 seconds of stable Normal. The timer keeps running.",
+                 font=(FONT_STYLE, 9), bg=app.bg_color, fg=app.text_sub,
+                 justify="left", wraplength=550).grid(row=3, column=0, sticky="w", pady=(5, 0))
         form_actions = tk.Frame(layout.form, bg=app.panel_color)
         form_actions.grid(row=2, column=0, columnspan=5, sticky="ew")
         self.add_button = schedule_button(form_actions, "Add Schedule", self.save,
@@ -46,11 +48,11 @@ class WaterScheduleWindow(tk.Toplevel):
                  justify="left", wraplength=265, bg=app.panel_color, fg=app.text_sub
                  ).pack(side="left", fill="x", expand=True)
 
-        columns = ("day", "time", "drain", "refill", "state", "last")
+        columns = ("day", "time", "duration", "state", "last")
         self.tree = ttk.Treeview(layout.table, columns=columns, show="headings",
                                  selectmode="browse", style="Schedule.Treeview", height=5)
-        for key, title, width in zip(columns, ("Day", "Time", "Drain (s)", "Refill max (s)",
-                                              "Status", "Last run"), (170, 75, 85, 110, 80, 120)):
+        for key, title, width in zip(columns, ("Day", "Time", "Both pumps (s)",
+                                              "Status", "Last run"), (170, 75, 110, 80, 120)):
             self.tree.heading(key, text=title)
             self.tree.column(key, width=width, minwidth=55, anchor="w" if key in ("day", "last") else "center")
         self.tree.grid(row=0, column=0, sticky="nsew")
@@ -92,8 +94,7 @@ class WaterScheduleWindow(tk.Toplevel):
             hour, minute = row["time"].split(":")
             self.hour.set(hour)
             self.minute.set(minute)
-            self.drain.set(row["drainSeconds"])
-            self.refill.set(row["refillSeconds"])
+            self.duration.set(row["durationSeconds"])
         self.loaded_id = row["id"] if row else None
 
     def set_busy(self, busy):
@@ -121,7 +122,7 @@ class WaterScheduleWindow(tk.Toplevel):
     def save(self, schedule_id=None):
         payload = dict(day=config.FEEDING_DAY_NAMES.index(self.day.get()),
                        time=f"{self.hour.get()}:{self.minute.get()}",
-                       drainSeconds=self.drain.get(), refillSeconds=self.refill.get())
+                       durationSeconds=self.duration.get())
         self.run(lambda: water_schedule.save(payload, schedule_id), "Water schedule saved.")
 
     def toggle(self):
@@ -145,7 +146,10 @@ class WaterScheduleWindow(tk.Toplevel):
         if not data["ready"]:
             lines.append("Controller disconnected.")
         if job:
-            lines.append(f"{'Current' if data['active'] else 'Last'}: {job['status']} {job.get('reason') or ''}".strip())
+            if data['active'] and job['status'] == 'exchanging':
+                lines.append(f"{job['controlText']}: about {job['remainingSeconds']}s remaining of {job['durationSeconds']}s")
+            else:
+                lines.append(f"{'Current' if data['active'] else 'Last'}: {job['status']} {job.get('reason') or ''}".strip())
         self.summary.set("  •  ".join(lines))
         rows = {row["id"]: row for row in data["schedules"]}
         if rows == self.rows and list(rows) == list(self.rows):
@@ -155,7 +159,7 @@ class WaterScheduleWindow(tk.Toplevel):
             if int(item) not in rows:
                 self.tree.delete(item)
         for index, (key, row) in enumerate(rows.items()):
-            values = (row["dayName"], row["time"], row["drainSeconds"], row["refillSeconds"],
+            values = (row["dayName"], row["time"], row["durationSeconds"],
                       "Active" if row["enabled"] else "Paused", row["lastStatus"] or "Not run")
             item = str(key)
             if self.tree.exists(item):

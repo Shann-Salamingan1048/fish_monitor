@@ -12,11 +12,11 @@
   <form id="water-schedule-form" class="schedule-form" hidden>
     <label>Day<select id="water-day">{% for name in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday','Every day (Monday–Sunday)'] %}<option value="{{ loop.index0 }}">{{ name }}</option>{% endfor %}</select></label>
     <label>Time<input id="water-time" type="time" required></label>
-    <label>Drain duration (seconds)<input id="water-drain" type="number" min="1" max="600" step="1" required></label>
-    <label>Refill timeout (seconds)<input id="water-refill" type="number" min="1" max="1800" step="1" required></label>
+    <label>Shared duration (seconds)<input id="water-duration" type="number" min="1" max="600" step="1" placeholder="60 = 1 minute" aria-describedby="water-duration-help" required></label>
     
     <div class="calibration-actions"><button type="submit" id="water-save" class="mode-btn">Add schedule</button><button type="button" id="water-cancel" class="mode-btn muted" hidden>Cancel edit</button></div>
   </form>
+  <p id="water-duration-help">One timer: 60 seconds = 1 minute. Both pumps run together. High water temporarily pauses refill; low water pauses draining. Both resume after the Normal level stays stable for 2 seconds. The timer keeps running during corrections. Invalid readings or a connection fault end the run.</p>
   <p id="water-schedule-message" class="schedule-message" role="status"></p>
   <div id="water-schedule-list" class="feeding-schedule-list"></div>
   <div class="water-run-status">

@@ -43,6 +43,7 @@ from predictions import (
     record_sensor_history_locked,
 )
 import water_control
+import water_schedule
 import sensor_control
 import feeding_control
 
@@ -152,6 +153,10 @@ class MCUCommunicator:
         elif "COOLER:OFF" in line:
             print("[COOLER] MegaOutput reports cooler OFF")
 
+        if 'PUMP_EXTRACT:' in line and 'PUMP_INSERT:' in line:
+            fields = dict(part.split(':', 1) for part in line.split(',') if ':' in part)
+            water_control.accept_pump_status(fields)
+            water_schedule.pump_feedback(fields)
         if "PUMP_EXTRACT:ON" in line:
             print("[WATER] MegaOutput reports extraction pump ON")
         if "PUMP_EXTRACT:OFF" in line:
@@ -250,7 +255,6 @@ class MCUCommunicator:
         # Stop any feed still running on a surviving output connection. Never
         # replay an uncertain job when the board returns.
         feeding_control.disconnect()
-        import water_schedule
         water_schedule.disconnect()
         config.send_to_identified_output_serial_ports('MegaOutput,FEED:STOP,JOB:0\n')
         fan_control.stop_for_shutdown()
@@ -370,7 +374,8 @@ class MCUCommunicator:
                     )
 
                 now = time.monotonic()
-                if now - last_heartbeat >= 1.0:
+                allow_heartbeat = role != 'mega' or water_schedule.service_exchange()
+                if allow_heartbeat and now - last_heartbeat >= 1.0:
                     if ser in config.output_serial_ports:
                         self._send_serial_message(ser, 'MegaOutput,HEARTBEAT:1\n')
                     last_heartbeat = now
@@ -411,7 +416,6 @@ class MCUCommunicator:
                     self._pause_after_connection_loss()
                 if role == 'mega':
                     feeding_control.disconnect()
-                    import water_schedule
                     water_schedule.disconnect()
                     fan_control.disconnected()
 

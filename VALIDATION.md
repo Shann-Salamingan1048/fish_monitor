@@ -1,3 +1,15 @@
+# Simultaneous scheduled water changes
+
+- 322 Python tests passed, including a 60-second shared timer, Low/Very Low/High correction, stable Normal recovery with float wobble, immediate opposite-limit correction, ordered pump acknowledgements, missing adjustment replies, no repeated commands, completion during correction, read-only countdown polling, legacy schedules, operator stop, invalid readings and feeder exclusion.
+- The web schedule DOM test passed for create, edit, pause, delete, polling, remaining-time and correction-state display, and stop with one duration field. The desktop help text and status were updated; visual desktop verification remains pending.
+- Eight web pages rendered. The updated JavaScript passed its syntax check.
+- The existing Mega simulation passed for simultaneous pump commands, heartbeat expiry and system shutdown.
+- A byte comparison confirmed that all bundled Arduino firmware files match the prior release.
+
+Physical pump timing and flow, float response and Pi reboot behavior require validation on the installed aquarium.
+
+## Earlier verification
+
 # AquaPi control and calibration validation
 
 ## Boot, defaults and forecast update

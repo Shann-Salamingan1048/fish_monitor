@@ -28,8 +28,11 @@
         $('water-schedule-next').textContent=next ? `Next water change: ${next}` : 'No water change scheduled';
         $('water-timezone').textContent = `Time zone: ${data.timezone}`;
         const job=data.active || data.last;
-        $('water-change-state').textContent=(!data.ready ? 'Connect Mega with the water-change firmware. ' : '')+
-            (job ? `${data.active?'Current':'Last'}: ${job.status}${job.reason?' · '+job.reason:''}` : 'No water changes yet.');
+        const runText=data.active?.status==='exchanging' && Number.isFinite(data.active.remainingSeconds)
+            ? `${data.active.controlText || 'Both pumps running'} · about ${data.active.remainingSeconds}s remaining of ${data.active.durationSeconds}s`
+            : job ? `${data.active?'Current':'Last'}: ${job.status}${job.reason?' · '+job.reason:''}` : 'No water changes yet.';
+        $('water-change-state').textContent=(!data.ready ? 'Controller disconnected or not ready. ' : '')+
+            runText;
         const list=$('water-schedule-list'); list.replaceChildren();
         if (!rows.length) {
             const empty = document.createElement('div');
@@ -42,7 +45,7 @@
             const detail=document.createElement('div'); detail.className='schedule-details';
             const title=document.createElement('strong'); title.textContent=`${row.dayName} at ${row.time}`;
             const text=document.createElement('span');
-            text.textContent=`Drain ${row.drainSeconds}s · refill timeout ${row.refillSeconds}s · ${row.enabled?'Active':'Paused'} · Last: ${row.lastStatus || 'Not run'}`;
+            text.textContent=`Both pumps ${row.durationSeconds}s · ${row.enabled?'Active':'Paused'} · Last: ${row.lastStatus || 'Not run'}`;
             detail.append(title,text); item.append(detail);
             const actions=document.createElement('div');actions.dataset.actions='';actions.className='schedule-admin-actions';
             for(const [label,fn] of [['Edit',()=>edit(row)], [row.enabled?'Pause':'Enable',()=>mutate('/api/water-schedules/'+row.id,'PUT',{enabled:!row.enabled})],['Delete',()=>{
@@ -60,7 +63,7 @@
     function edit(row) {
         if(!admin() || busy)return;
         editing=row.id;
-        for(const [id,value] of [['water-day',row.day],['water-time',row.time],['water-drain',row.drainSeconds],['water-refill',row.refillSeconds]]) $(id).value=value;
+        for(const [id,value] of [['water-day',row.day],['water-time',row.time],['water-duration',row.durationSeconds]]) $(id).value=value;
         $('water-save').textContent='Save changes';$('water-cancel').hidden=false;
     }
     async function mutate(url,method,payload,clear=false) {
@@ -84,7 +87,7 @@
         event.preventDefault();
         mutate('/api/water-schedules'+(editing?'/'+editing:''),editing?'PUT':'POST',{
             day:Number($('water-day').value),time:$('water-time').value,
-            drainSeconds:Number($('water-drain').value),refillSeconds:Number($('water-refill').value)
+            durationSeconds:Number($('water-duration').value)
         },true);
     });
     $('water-cancel').addEventListener('click',reset);

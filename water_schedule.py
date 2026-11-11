@@ -1,9 +1,10 @@
-"""Recurring water changes. Pi schedules; the Mega runs a bounded drain/refill.
+"""Recurring water changes. The Pi times both pumps together using existing Mega commands.
 
 Claims/jobs are durable before sending and never replayed after interruption.
 All actuator admission uses the shared sensor lock, including feeder requests.
 """
 import re
+import math
 import sqlite3
 import time
 from datetime import datetime, timedelta
@@ -18,6 +19,13 @@ _lock = config.sensor_lock
 _active = None
 _ready = False
 _started_at = time.time()
+NORMAL_RECOVERY_SECONDS = 2.0
+PUMP_ACK_SECONDS = 3.0
+_PUMPS = {
+    'both': ('BOTH_ON', ('ON', 'ON'), 'Both pumps running'),
+    'drain': ('EXTRACT_ON', ('ON', 'OFF'), 'Correcting high water: drain only'),
+    'refill': ('INSERT_ON', ('OFF', 'ON'), 'Correcting low water: refill only'),
+}
 
 
 def create_tables(conn):
@@ -34,8 +42,8 @@ def create_tables(conn):
 def initialize():
     global _active, _ready, _started_at
     with _lock, config.db_connect() as conn:
-        conn.execute("UPDATE water_jobs SET status='interrupted',reason='Application restarted',updated_at=? WHERE status IN ('sent','draining','refilling','stopping')", (time.time(),))
-        conn.execute("UPDATE water_schedules SET last_status='interrupted' WHERE last_status IN ('claimed','sent','draining','refilling','stopping')")
+        conn.execute("UPDATE water_jobs SET status='interrupted',reason='Application restarted',updated_at=? WHERE status IN ('sent','draining','refilling','exchanging','stopping')", (time.time(),))
+        conn.execute("UPDATE water_schedules SET last_status='interrupted' WHERE last_status IN ('claimed','sent','draining','refilling','exchanging','stopping')")
         _active, _ready, _started_at = None, False, time.time()
 
 
@@ -47,7 +55,8 @@ def _seconds(value, name, maximum):
 
 def _row(row):
     return dict(id=row['id'], day=row['day'], dayName=config.FEEDING_DAY_NAMES[row['day']],
-                time=row['time'], drainSeconds=row['drain_seconds'], refillSeconds=row['refill_seconds'],
+                time=row['time'], durationSeconds=min(row['drain_seconds'], row['refill_seconds']),
+                drainSeconds=row['drain_seconds'], refillSeconds=row['refill_seconds'],
                 enabled=bool(row['enabled']), lastTriggeredDate=row['last_date'],
                 lastTriggeredAt=row['last_at'], lastStatus=row['last_status'])
 
@@ -59,7 +68,7 @@ def schedules():
 
 
 def save(payload, schedule_id=None):
-    if not isinstance(payload, dict) or set(payload)-{'day','time','drainSeconds','refillSeconds','enabled'}:
+    if not isinstance(payload, dict) or set(payload)-{'day','time','drainSeconds','refillSeconds','durationSeconds','enabled'}:
         raise ValueError('Invalid water schedule.')
     with _lock:
         old = next((s for s in schedules() if s['id']==schedule_id), None)
@@ -68,6 +77,10 @@ def save(payload, schedule_id=None):
         values={**(old or {}), **payload}
         day=config.validate_feeding_day(values.get('day'))
         at=config.validate_feed_time(values.get('time'))
+        if 'durationSeconds' in payload:
+            if 'drainSeconds' in payload or 'refillSeconds' in payload:
+                raise ValueError('Choose one shared duration for both pumps.')
+            values['drainSeconds'] = values['refillSeconds'] = payload['durationSeconds']
         drain=_seconds(values.get('drainSeconds'), 'Drain duration', 600)
         refill=_seconds(values.get('refillSeconds'), 'Refill timeout', 1800)
         enabled=config.normalize_schedule_enabled(values.get('enabled',True))
@@ -119,30 +132,119 @@ def handle_status(fields):
     with _lock:
         if fields.get('WATERCHANGE')=='V1':
             _ready=True
-        if not _active or fields.get('WCJOB')!=str(_active['id']):
+
+
+def _stop_exchange(outcome, reason):
+    """A pending stop retains the reservation until feedback or disconnect."""
+    if _active['status'] == 'stopping':
+        if outcome != 'complete':
+            _active['outcome'] = outcome
+            _record('stopping', reason)
+        return
+    _active['outcome'] = outcome
+    _active['pending'].append((('OFF', 'OFF'), time.monotonic()))
+    config.send_to_identified_output_serial_ports('MegaOutput,PUMP:STOP_ALL\n')
+    _record('stopping', reason)
+
+
+def _request_pumps(mode, now):
+    """Send on transitions only; retain ordered acknowledgements for this serial link."""
+    if _active['targetMode'] == mode:
+        return
+    if len(_active['pending']) >= 3:
+        _stop_exchange('interrupted', 'Controller is not keeping up with level changes')
+        return
+    command, pair, _ = _PUMPS[mode]
+    _active['targetMode'] = mode
+    _active['pending'].append((pair, now))
+    if not config.send_to_identified_output_serial_ports(f'MegaOutput,PUMP:{command}\n'):
+        _stop_exchange('interrupted', 'Pump adjustment delivery uncertain')
+
+
+def pump_feedback(fields):
+    global _active
+    with _lock:
+        if not _active:
             return
-        status=fields.get('WC','').lower()
-        if status not in {'draining','refilling','complete','cancelled','failed','rejected'}:
+        pair = fields.get('PUMP_EXTRACT'), fields.get('PUMP_INSERT')
+        pending = _active['pending']
+        if fields.get('REASON') != 'COMMAND' or not pending or pair != pending[0][0]:
+            if _active['status'] != 'stopping' and pair != _PUMPS[_active['pumpMode']][1]:
+                _stop_exchange('failed', 'Pump operation changed unexpectedly')
             return
-        _record(status,fields.get('WCREASON','').lower().replace('_',' '))
-        if status in {'complete','cancelled','failed','rejected'}:
-            _active=None
+        pending.pop(0)
+        if pair != ('OFF', 'OFF'):
+            _active['confirmed'] = True
+            _active['pumpMode'] = next(mode for mode, spec in _PUMPS.items() if spec[1] == pair)
+            if _active['status'] != 'stopping':
+                _record('exchanging', _PUMPS[_active['pumpMode']][2])
+        elif _active['status'] == 'stopping' and not pending and _active['confirmed']:
+            # An ordered start/adjustment/stop reply chain prevents stale replies
+            # from releasing the reservation. Missing replies expire the watchdog.
+            outcome = _active['outcome']
+            if outcome == 'complete':
+                config.send_to_identified_output_serial_ports('MegaOutput,WATERMODE:AUTO\n')
+            _record(outcome, _active['reason'])
+            _active = None
+
+
+def service_exchange():
+    """Service the timer and level checks before renewing the Mega watchdog."""
+    with _lock:
+        if not _active:
+            return True
+        if _active['status'] == 'stopping':
+            return False
+        reason = _level_fault()
+        now = time.monotonic()
+        elapsed = now - _active['monotonic']
+        if reason or calibration.active() or config.shutting_down:
+            _stop_exchange('failed', reason or 'System or calibration changed')
+        elif _active['pending'] and now - _active['pending'][0][1] >= PUMP_ACK_SECONDS:
+            _stop_exchange('interrupted', 'Pump command not confirmed')
+        elif elapsed >= _active['durationSeconds']:
+            _stop_exchange('complete', 'Shared duration elapsed')
+        else:
+            low, normal, upper = (sensor_control.float_reading(k) for k in sensor_control.FLOAT_KEYS)
+            if upper or not normal:
+                _active['normalSince'] = None
+                _request_pumps('drain' if upper else 'refill', now)
+            elif _active['targetMode'] != 'both':
+                # Require stable Normal before resuming both, avoiding relay chatter.
+                if _active['normalSince'] is None:
+                    _active['normalSince'] = now
+                elif now - _active['normalSince'] >= NORMAL_RECOVERY_SECONDS:
+                    _request_pumps('both', now)
+        return _active['status'] != 'stopping'
+
+
+def _level_fault():
+    if not sensor_control.all_floats_enabled():
+        return 'Enable all three float switches'
+    if not 0 <= time.time() - config.last_sensor_received_at <= 3:
+        return 'Water-level readings are stale'
+    floats = [sensor_control.float_reading(k) for k in sensor_control.FLOAT_KEYS]
+    if any(type(value) is not bool for value in floats):
+        return 'Water-level readings are unavailable'
+    low, normal, upper = floats
+    if (upper and not normal) or (normal and not low):
+        return 'Float readings are inconsistent'
+    return None
 
 
 def stop():
-    global _active
     with _lock:
-        sent=config.send_to_identified_output_serial_ports('MegaOutput,WATERCHANGE:STOP\n')
-        water_control.manual_action('stop_all')
         if _active:
-            _record('stopping' if sent else 'interrupted','Stopped by operator')
-            if not sent: _active=None
+            _stop_exchange('cancelled', 'Stopped by operator')
+        else:
+            config.send_to_identified_output_serial_ports('MegaOutput,WATERCHANGE:STOP\n')
+            water_control.manual_action('stop_all')
         return response()
 
 
 def _block_reason():
     if config.shutting_down: return 'System off'
-    if not _ready or len(config.output_serial_ports)!=1: return 'Connect Mega with water-change firmware'
+    if not _ready or len(config.output_serial_ports)!=1: return 'Controller disconnected or not ready'
     if _active: return 'Another water change is active'
     state=water_control.get_status()
     if state['manualOverride']: return 'Automatic water control is paused'
@@ -150,11 +252,11 @@ def _block_reason():
     feeder=feeding_control.get_status()
     if feeder['busy']: return 'Feeder is busy'
     if calibration.active(): return 'Sensor calibration is active'
-    if not sensor_control.all_floats_enabled(): return 'Enable all three float switches'
-    if not config.last_sensor_received_at or time.time()-config.last_sensor_received_at>3:
-        return 'Water-level readings are stale'
-    floats=[sensor_control.float_reading(k) for k in sensor_control.FLOAT_KEYS]
-    if floats != [True,True,False]: return 'Water must be at Normal with valid float readings'
+    fault = _level_fault()
+    if fault:
+        return fault
+    if [sensor_control.float_reading(k) for k in sensor_control.FLOAT_KEYS] != [True, True, False]:
+        return 'Water must be at Normal before starting a scheduled exchange'
     return None
 
 
@@ -164,12 +266,6 @@ def process_due(local_now=None):
     now=local_now or datetime.now(zone)
     now=now.replace(tzinfo=zone) if now.tzinfo is None else now.astimezone(zone)
     with _lock:
-        if _active and time.monotonic()-_active['monotonic']>_active['timeout']:
-            # Ambiguous completion is not retried; the Mega also owns its timeout.
-            config.send_to_identified_output_serial_ports('MegaOutput,WATERCHANGE:STOP\n')
-            water_control.manual_action('stop_all')
-            _record('interrupted','No completion confirmation')
-            _active=None
         if config.shutting_down: return []
         claimed=[]
         with config.db_connect() as conn:
@@ -194,12 +290,15 @@ def process_due(local_now=None):
                                  (schedule['id'],date,status,reason or '',time.time(),time.time())).lastrowid
                 conn.execute('UPDATE water_schedules SET last_status=? WHERE id=?',(status,schedule['id']))
             if not reason:
+                started = time.monotonic()
                 _active=dict(id=job,schedule_id=schedule['id'],trigger_date=date,status='sent',reason='',
-                             monotonic=time.monotonic(),timeout=schedule['drainSeconds']+schedule['refillSeconds']+15)
-                sent=config.send_to_identified_output_serial_ports(
-                    f"MegaOutput,WATERCHANGE:START,JOB:{job},DRAIN:{schedule['drainSeconds']},REFILL:{schedule['refillSeconds']}\n")
+                             monotonic=started, durationSeconds=schedule['durationSeconds'],
+                             confirmed=False, targetMode='both', pumpMode='both', normalSince=None,
+                             pending=[(('ON', 'ON'), started)])
+                sent = config.send_to_identified_output_serial_ports('MegaOutput,PUMP:BOTH_ON\n')
                 if not sent:
-                    _record('interrupted','Command delivery uncertain; not retried'); _active=None; status='interrupted'
+                    _stop_exchange('interrupted', 'Start delivery uncertain')
+                    status = 'stopping'
             results.append(dict(scheduleId=schedule['id'],status=status,reason=reason))
         return results
 
@@ -229,9 +328,18 @@ def response():
         conn.row_factory=sqlite3.Row
         row=conn.execute('SELECT * FROM water_jobs ORDER BY id DESC LIMIT 1').fetchone()
         items=schedules()
+        active = None
+        if _active:
+            active = {k:v for k,v in _active.items() if k in {
+                'id', 'schedule_id', 'trigger_date', 'status', 'reason', 'durationSeconds'}}
+            active['controlText'] = ('Waiting for pump confirmation' if _active['pending']
+                                     else _PUMPS[_active['pumpMode']][2])
+            # Display only: polling must never reset or advance the pump timer.
+            active['remainingSeconds'] = max(0, min(_active['durationSeconds'], math.ceil(
+                _active['durationSeconds'] - (time.monotonic() - _active['monotonic']))))
         return dict(ok=True,schedules=items,timezone=str(get_feeding_zone()),nextRun=next_run(items),
                     ready=_ready and len(config.output_serial_ports)==1,
-                    active={k:v for k,v in _active.items() if k not in {'monotonic','timeout'}} if _active else None,
+                    active=active,
                     last=dict(row) if row else None)
 
 

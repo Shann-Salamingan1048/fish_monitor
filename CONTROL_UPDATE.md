@@ -10,7 +10,7 @@
 ## What changed
 
 - Low and Very Low now start refilling. Overflow starts draining. Both corrections continue for 3 seconds of continuous Normal detection. An opposite water-level limit immediately overrides that allowance.
-- Scheduled refills use the same allowance; their refill timeout still takes priority.
+- Scheduled exchanges use one shared timer for both pumps. During a run, high water temporarily selects drain only and low water selects refill only. Both resume after two seconds of stable Normal readings. Level correction does not reset or extend the timer; invalid data or communication faults stop the run.
 - Temperature acquisition, display and automatic cooling continue during pumping. Auto cooling uses the configured critical temperature, 5-second confirmation and 0.5°C cooling margin.
 - Quality correction starts on confirmed Critical pH, Cloudy, or Very Cloudy. Warning pH and Slightly Cloudy alone do not start correction. Both pumps run until pH is back inside the warning range and/or clarity is Clear/Very Clear, depending on which causes triggered. Low/Overflow retain pump-direction priority. Disabling the triggering sensor or stopping the system cancels its correction.
 - Water-change schedules skip busy occurrences. Due feeds wait for pumps to finish, even beyond 30 minutes. Confirmed not-started pump conflicts are postponed; uncertain delivery or interrupted servings are not replayed.

@@ -67,7 +67,7 @@ View live ADC alongside the 5 V curve estimate or an interpolation from saved NT
 
 ## Scheduled water changes
 
-Create weekly or everyday drain/refill schedules in Web → Water Changes → Water-change schedule, or use Water-change schedule beside Feeding Schedule on the GUI dashboard. The same editor opens from Controls & settings → Water pumps. Both use the same database. This feature requires the updated combined Mega sketch. See `WATER_CHANGE_SCHEDULE.md` for setup, durations, float protection and skipped-run behavior.
+Create weekly or everyday drain/refill schedules in Web → Water Changes → Water-change schedule, or use Water-change schedule beside Feeding Schedule on the GUI dashboard. The same editor opens from Controls & settings → Water pumps. Both use the same database. Set one shared duration in seconds. Both pumps start together; during the run, high water pauses refill and low water pauses draining. Both resume after two seconds of stable Normal. The timer keeps running during corrections. See `WATER_CHANGE_SCHEDULE.md` for setup, durations, protection and skipped-run behavior.
 
 ## Turbidity predictions
 
